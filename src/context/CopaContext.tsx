@@ -1,0 +1,564 @@
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Team,
+  Match,
+  BracketNode,
+  INITIAL_TEAMS,
+  generateGroupMatches,
+  calculateStandings,
+  generateKnockoutBracket,
+  STADIUMS,
+  MatchStats,
+} from '../data/copaData';
+import { simulateMatchTick } from '../services/simulationEngine';
+
+// ==============================================================
+// TYPES
+// ==============================================================
+interface CopaContextType {
+  teams: Team[];
+  matches: Match[];
+  bracketNodes: BracketNode[];
+  selectedMatchId: string | null;
+  selectedTeamId: string | null;
+  activeTab: 'matches' | 'standings' | 'bracket' | 'teams';
+  apiKey: string;
+  isApiMode: boolean;
+  isLoading: boolean;
+  lastUpdated: Date | null;
+  setApiKey: (key: string) => void;
+  setSelectedMatchId: (id: string | null) => void;
+  setSelectedTeamId: (id: string | null) => void;
+  setActiveTab: (tab: 'matches' | 'standings' | 'bracket' | 'teams') => void;
+  updateMatchScore: (matchId: string, homeScore: number, awayScore: number, status: 'FINISHED' | 'LIVE' | 'SCHEDULED') => void;
+  triggerNextSimulationTick: () => void;
+  refreshFromApi: () => void;
+}
+
+const CopaContext = createContext<CopaContextType | undefined>(undefined);
+
+// ==============================================================
+// TEAM TRANSLATIONS - All 48 Copa 2026 teams + extras
+// ==============================================================
+const TEAM_TRANSLATIONS: Record<string, { name: string; flag: string }> = {
+  // Group A
+  MEX: { name: 'México', flag: '🇲🇽' },
+  RSA: { name: 'África do Sul', flag: '🇿🇦' },
+  KOR: { name: 'Coreia do Sul', flag: '🇰🇷' },
+  CZE: { name: 'Chéquia', flag: '🇨🇿' },
+  // Group B
+  CAN: { name: 'Canadá', flag: '🇨🇦' },
+  BIH: { name: 'Bósnia e Herzegovina', flag: '🇧🇦' },
+  QAT: { name: 'Catar', flag: '🇶🇦' },
+  SUI: { name: 'Suíça', flag: '🇨🇭' },
+  // Group C
+  BRA: { name: 'Brasil', flag: '🇧🇷' },
+  MAR: { name: 'Marrocos', flag: '🇲🇦' },
+  HAI: { name: 'Haiti', flag: '🇭🇹' },
+  SCO: { name: 'Escócia', flag: '🏴󠁧󠁢󠁳󠁣󠁴󠁿' },
+  // Group D
+  USA: { name: 'Estados Unidos', flag: '🇺🇸' },
+  PAR: { name: 'Paraguai', flag: '🇵🇾' },
+  AUS: { name: 'Austrália', flag: '🇦🇺' },
+  TUR: { name: 'Turquia', flag: '🇹🇷' },
+  // Group E
+  GER: { name: 'Alemanha', flag: '🇩🇪' },
+  CUW: { name: 'Curaçau', flag: '🇨🇼' },
+  CIV: { name: 'Costa do Marfim', flag: '🇨🇮' },
+  ECU: { name: 'Equador', flag: '🇪🇨' },
+  // Group F
+  NED: { name: 'Holanda', flag: '🇳🇱' },
+  JPN: { name: 'Japão', flag: '🇯🇵' },
+  SWE: { name: 'Suécia', flag: '🇸🇪' },
+  TUN: { name: 'Tunísia', flag: '🇹🇳' },
+  // Group G
+  BEL: { name: 'Bélgica', flag: '🇧🇪' },
+  EGY: { name: 'Egito', flag: '🇪🇬' },
+  IRN: { name: 'Irã', flag: '🇮🇷' },
+  NZL: { name: 'Nova Zelândia', flag: '🇳🇿' },
+  // Group H
+  ESP: { name: 'Espanha', flag: '🇪🇸' },
+  CPV: { name: 'Cabo Verde', flag: '🇨🇻' },
+  KSA: { name: 'Arábia Saudita', flag: '🇸🇦' },
+  URY: { name: 'Uruguai', flag: '🇺🇾' },
+  // Group I
+  FRA: { name: 'França', flag: '🇫🇷' },
+  SEN: { name: 'Senegal', flag: '🇸🇳' },
+  IRQ: { name: 'Iraque', flag: '🇮🇶' },
+  NOR: { name: 'Noruega', flag: '🇳🇴' },
+  // Group J
+  ARG: { name: 'Argentina', flag: '🇦🇷' },
+  ALG: { name: 'Argélia', flag: '🇩🇿' },
+  AUT: { name: 'Áustria', flag: '🇦🇹' },
+  JOR: { name: 'Jordânia', flag: '🇯🇴' },
+  // Group K
+  POR: { name: 'Portugal', flag: '🇵🇹' },
+  COD: { name: 'RD Congo', flag: '🇨🇩' },
+  UZB: { name: 'Uzbequistão', flag: '🇺🇿' },
+  COL: { name: 'Colômbia', flag: '🇨🇴' },
+  // Group L
+  ENG: { name: 'Inglaterra', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+  CRO: { name: 'Croácia', flag: '🇭🇷' },
+  GHA: { name: 'Gana', flag: '🇬🇭' },
+  PAN: { name: 'Panamá', flag: '🇵🇦' },
+  // Extra/legacy mappings
+  SRB: { name: 'Sérvia', flag: '🇷🇸' },
+  POL: { name: 'Polônia', flag: '🇵🇱' },
+  DEN: { name: 'Dinamarca', flag: '🇩🇰' },
+  UKR: { name: 'Ucrânia', flag: '🇺🇦' },
+  CHI: { name: 'Chile', flag: '🇨🇱' },
+  PER: { name: 'Peru', flag: '🇵🇪' },
+  HON: { name: 'Honduras', flag: '🇭🇳' },
+  SLV: { name: 'El Salvador', flag: '🇸🇻' },
+  JAM: { name: 'Jamaica', flag: '🇯🇲' },
+  ITA: { name: 'Itália', flag: '🇮🇹' },
+  NGA: { name: 'Nigéria', flag: '🇳🇬' },
+  CMR: { name: 'Camarões', flag: '🇨🇲' },
+  SUI_OLD: { name: 'Suíça', flag: '🇨🇭' },
+  WAL: { name: 'País de Gales', flag: '🏴󠁧󠁢󠁷󠁬󠁳󠁿' },
+};
+
+// ==============================================================
+// API rate limiter: max 10 calls per minute (free tier)
+// ==============================================================
+class ApiRateLimiter {
+  private callTimes: number[] = [];
+  private readonly maxCalls = 9; // keep 1 buffer
+  private readonly windowMs = 60000; // 1 minute
+
+  canCall(): boolean {
+    const now = Date.now();
+    this.callTimes = this.callTimes.filter(t => now - t < this.windowMs);
+    return this.callTimes.length < this.maxCalls;
+  }
+
+  recordCall(): void {
+    this.callTimes.push(Date.now());
+  }
+
+  waitMs(): number {
+    if (this.canCall()) return 0;
+    const oldest = Math.min(...this.callTimes);
+    return oldest + this.windowMs - Date.now() + 100;
+  }
+}
+
+const rateLimiter = new ApiRateLimiter();
+
+// ==============================================================
+// Provider
+// ==============================================================
+export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [teamsState, setTeamsState] = useState<Team[]>(INITIAL_TEAMS);
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [bracketNodes, setBracketNodes] = useState<BracketNode[]>([]);
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>('BRA');
+  const [activeTab, setActiveTab] = useState<'matches' | 'standings' | 'bracket' | 'teams'>('matches');
+  const [apiKey, setApiKeyInternal] = useState<string>(() => localStorage.getItem('copa_api_key') || '');
+  const [isApiMode, setIsApiMode] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const teamsRef = useRef<Team[]>(INITIAL_TEAMS);
+
+  // Keep ref in sync for simulation engine
+  useEffect(() => { teamsRef.current = teamsState; }, [teamsState]);
+
+  // ==============================================================
+  // Initialize offline simulation data
+  // ==============================================================
+  useEffect(() => {
+    const initialMatches = generateGroupMatches();
+    setMatches(initialMatches);
+
+    const liveMatch = initialMatches.find(m => m.status === 'LIVE');
+    if (liveMatch) setSelectedMatchId(liveMatch.id);
+    else {
+      const finishedMatches = initialMatches.filter(m => m.status === 'FINISHED');
+      if (finishedMatches.length > 0) setSelectedMatchId(finishedMatches[finishedMatches.length - 1].id);
+      else if (initialMatches.length > 0) setSelectedMatchId(initialMatches[0].id);
+    }
+
+    const initialStandings = calculateStandings(INITIAL_TEAMS, initialMatches);
+    setTeamsState(initialStandings);
+    setBracketNodes(generateKnockoutBracket(initialStandings));
+  }, []);
+
+  // ==============================================================
+  // Update standings whenever matches change (offline mode)
+  // ==============================================================
+  useEffect(() => {
+    if (matches.length === 0 || isApiMode) return;
+    const newStandings = calculateStandings(INITIAL_TEAMS, matches);
+    setTeamsState(newStandings);
+    setBracketNodes(prev => {
+      const freshBracket = generateKnockoutBracket(newStandings);
+      return freshBracket.map(freshNode => {
+        const prevNode = prev.find(n => n.id === freshNode.id);
+        if (!prevNode) return freshNode;
+        if (prevNode.homeTeamId === freshNode.homeTeamId && prevNode.awayTeamId === freshNode.awayTeamId) {
+          return { ...freshNode, homeScore: prevNode.homeScore, awayScore: prevNode.awayScore, winnerId: prevNode.winnerId };
+        }
+        return freshNode;
+      });
+    });
+  }, [matches, isApiMode]);
+
+  // ==============================================================
+  // Live match simulation (offline mode only)
+  // ==============================================================
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isApiMode) return;
+      setMatches(prev => prev.map(m => m.status === 'LIVE' ? simulateMatchTick(m, teamsRef.current) : m));
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isApiMode]);
+
+  // ==============================================================
+  // API fetch with caching and rate limiting
+  // ==============================================================
+  const fetchRealDataFromApi = useCallback(async (key: string) => {
+    if (!key) return;
+
+    // Check localStorage cache - use if less than 60 seconds old
+    const cacheKey = 'copa_api_cache';
+    const cacheTimeKey = 'copa_api_cache_time';
+    const cachedTime = localStorage.getItem(cacheTimeKey);
+    const now = Date.now();
+
+    if (cachedTime && now - parseInt(cachedTime) < 60000) {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          const data = JSON.parse(cached);
+          applyApiData(data, key);
+          return;
+        } catch { /* ignore */ }
+      }
+    }
+
+    // Rate limit check
+    if (!rateLimiter.canCall()) {
+      const waitMs = rateLimiter.waitMs();
+      console.log(`Rate limited. Waiting ${waitMs}ms before API call.`);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+
+    setIsLoading(true);
+    try {
+      rateLimiter.recordCall();
+      const response = await fetch(
+        'https://corsproxy.io/?' + encodeURIComponent('https://api.football-data.org/v4/competitions/WC/matches'),
+        { headers: { 'X-Auth-Token': key } }
+      );
+
+      if (response.status === 429) {
+        console.warn('API rate limit hit. Using cached data if available.');
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) applyApiData(JSON.parse(cached), key);
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} - ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      // Cache the response
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+      localStorage.setItem(cacheTimeKey, String(now));
+
+      applyApiData(data, key);
+    } catch (error) {
+      console.error('API fetch error:', error);
+      // Try to use cached data as fallback
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          const data = JSON.parse(cached);
+          applyApiData(data, key);
+          console.log('Using cached API data as fallback.');
+          return;
+        } catch { /* ignore */ }
+      }
+      alert('Erro ao carregar dados da API. Voltando ao Modo Simulação Offline. Verifique sua chave e tente novamente.');
+      setIsApiMode(false);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const getTeamDetails = (tla: string | null, fallbackName?: string | null): { name: string; flag: string } => {
+    if (!tla) return { name: fallbackName || 'TBD', flag: '⚽' };
+    const trans = TEAM_TRANSLATIONS[tla];
+    if (trans) return trans;
+    return { name: fallbackName || tla, flag: '⚽' };
+  };
+
+  const getMappedStage = (apiStage: string): Match['stage'] => {
+    switch (apiStage) {
+      case 'GROUP_STAGE': return 'GROUP';
+      case 'ROUND_OF_32': case 'LAST_32': return 'ROUND_OF_32';
+      case 'ROUND_OF_16': case 'LAST_16': return 'ROUND_OF_16';
+      case 'QUARTER_FINALS': return 'QUARTER_FINALS';
+      case 'SEMI_FINALS': return 'SEMI_FINALS';
+      case 'THIRD_PLACE': return 'THIRD_PLACE';
+      case 'FINAL': return 'FINAL';
+      default: return 'GROUP';
+    }
+  };
+
+  const applyApiData = (data: any, _key: string) => {
+    if (!data.matches || data.matches.length === 0) return;
+
+    const apiMatches = data.matches;
+
+    // 1. Extract unique teams from all matches
+    const extractedTeamsMap = new Map<string, Team>();
+
+    apiMatches.forEach((m: any) => {
+      const groupName = m.group?.replace('GROUP_', '') || '';
+
+      [m.homeTeam, m.awayTeam].forEach((team: any) => {
+        if (!team?.tla) return;
+        const tla = team.tla;
+        if (!extractedTeamsMap.has(tla)) {
+          const details = getTeamDetails(tla, team.name);
+          extractedTeamsMap.set(tla, {
+            id: tla,
+            name: details.name,
+            flag: details.flag,
+            group: groupName,
+            points: 0, played: 0, wins: 0, draws: 0, losses: 0,
+            goalsFor: 0, goalsAgainst: 0, goalsDifference: 0,
+          });
+        } else if (groupName && !extractedTeamsMap.get(tla)!.group) {
+          extractedTeamsMap.get(tla)!.group = groupName;
+        }
+      });
+    });
+
+    const extractedTeams = Array.from(extractedTeamsMap.values());
+
+    // 2. Map API matches to our internal structure
+    const mappedMatches: Match[] = apiMatches.map((apiMatch: any, idx: number) => {
+      const homeScore = apiMatch.score?.fullTime?.home ?? null;
+      const awayScore = apiMatch.score?.fullTime?.away ?? null;
+
+      let apiStatus: 'SCHEDULED' | 'LIVE' | 'FINISHED' = 'SCHEDULED';
+      if (apiMatch.status === 'FINISHED') apiStatus = 'FINISHED';
+      else if (['IN_PLAY', 'PAUSED', 'HALFTIME'].includes(apiMatch.status)) apiStatus = 'LIVE';
+
+      const stadiumId = STADIUMS[idx % STADIUMS.length].id;
+
+      // Generate events for finished matches
+      const events: any[] = [];
+      if (apiStatus === 'FINISHED') {
+        events.push({ id: `api_ev_${idx}_start`, minute: 1, type: 'comment', detail: 'Apita o árbitro! Começa a partida.' });
+        events.push({ id: `api_ev_${idx}_end`, minute: 90, type: 'comment', detail: 'Fim de jogo!' });
+      }
+
+      const stats: MatchStats = {
+        possessionHome: 50, possessionAway: 50,
+        shotsHome: homeScore !== null ? Math.max(homeScore * 4, 5) : 0,
+        shotsAway: awayScore !== null ? Math.max(awayScore * 4, 5) : 0,
+        shotsOnTargetHome: homeScore !== null ? Math.max(homeScore * 2, 2) : 0,
+        shotsOnTargetAway: awayScore !== null ? Math.max(awayScore * 2, 2) : 0,
+        foulsHome: 10, foulsAway: 10,
+        cornersHome: 4, cornersAway: 4,
+        yellowHome: 1, yellowAway: 1,
+        redHome: 0, redAway: 0,
+        offsidesHome: 1, offsidesAway: 1,
+      };
+
+      const homeTla = apiMatch.homeTeam?.tla || null;
+      const awayTla = apiMatch.awayTeam?.tla || null;
+
+      return {
+        id: `M_API_${apiMatch.id}`,
+        homeTeamId: homeTla || 'TBD',
+        awayTeamId: awayTla || 'TBD',
+        homeScore,
+        awayScore,
+        date: apiMatch.utcDate,
+        status: apiStatus,
+        stage: getMappedStage(apiMatch.stage),
+        group: apiMatch.group?.replace('GROUP_', '') || undefined,
+        stadiumId,
+        youtubeId: 'v2_WswqM37A',
+        events,
+        stats,
+        minute: apiStatus === 'LIVE' ? undefined : undefined,
+      };
+    });
+
+    // 3. Calculate standings from API matches
+    const standings = calculateStandings(extractedTeams, mappedMatches);
+    setTeamsState(standings);
+    setMatches(mappedMatches);
+
+    // Select a live or finished match
+    const liveMatch = mappedMatches.find(m => m.status === 'LIVE');
+    if (liveMatch) {
+      setSelectedMatchId(liveMatch.id);
+    } else {
+      const finishedMatches = mappedMatches.filter(m => m.status === 'FINISHED');
+      if (finishedMatches.length > 0) setSelectedMatchId(finishedMatches[finishedMatches.length - 1].id);
+    }
+
+    // 4. Build bracket from API matches
+    const getStageMatches = (stageName: Match['stage']) =>
+      mappedMatches
+        .filter(m => m.stage === stageName)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const apiR32 = getStageMatches('ROUND_OF_32');
+    const apiR16 = getStageMatches('ROUND_OF_16');
+    const apiQF = getStageMatches('QUARTER_FINALS');
+    const apiSF = getStageMatches('SEMI_FINALS');
+    const apiFinal = getStageMatches('FINAL');
+
+    const defaultBracket = generateKnockoutBracket(standings);
+
+    const mappedBracket = defaultBracket.map(node => {
+      let matchingApiMatch: Match | undefined;
+      const nodeIdx = parseInt(node.id.split('_')[1]) - 1;
+
+      if (node.stage === 'ROUND_OF_32' && apiR32[nodeIdx]) matchingApiMatch = apiR32[nodeIdx];
+      else if (node.stage === 'ROUND_OF_16' && apiR16[nodeIdx]) matchingApiMatch = apiR16[nodeIdx];
+      else if (node.stage === 'QUARTER_FINALS' && apiQF[nodeIdx]) matchingApiMatch = apiQF[nodeIdx];
+      else if (node.stage === 'SEMI_FINALS' && apiSF[nodeIdx]) matchingApiMatch = apiSF[nodeIdx];
+      else if (node.stage === 'FINAL' && apiFinal[0]) matchingApiMatch = apiFinal[0];
+
+      if (matchingApiMatch) {
+        const hScore = matchingApiMatch.homeScore;
+        const aScore = matchingApiMatch.awayScore;
+        let winnerId: string | null = null;
+        if (matchingApiMatch.status === 'FINISHED' && hScore !== null && aScore !== null) {
+          if (hScore > aScore) winnerId = matchingApiMatch.homeTeamId;
+          else if (hScore < aScore) winnerId = matchingApiMatch.awayTeamId;
+        }
+
+        const homeId = matchingApiMatch.homeTeamId !== 'TBD' ? matchingApiMatch.homeTeamId : null;
+        const awayId = matchingApiMatch.awayTeamId !== 'TBD' ? matchingApiMatch.awayTeamId : null;
+        const homeDetails = getTeamDetails(homeId, null);
+        const awayDetails = getTeamDetails(awayId, null);
+
+        return {
+          ...node,
+          homeTeamPlaceholder: homeId ? homeDetails.name : node.homeTeamPlaceholder,
+          awayTeamPlaceholder: awayId ? awayDetails.name : node.awayTeamPlaceholder,
+          homeTeamId: homeId,
+          awayTeamId: awayId,
+          homeScore: hScore,
+          awayScore: aScore,
+          winnerId,
+          date: matchingApiMatch.date,
+          stadiumId: matchingApiMatch.stadiumId,
+        };
+      }
+
+      return node;
+    });
+
+    setBracketNodes(mappedBracket);
+    setLastUpdated(new Date());
+    setIsApiMode(true);
+  };
+
+  // ==============================================================
+  // Set API Key and trigger fetch
+  // ==============================================================
+  const setApiKey = (key: string) => {
+    setApiKeyInternal(key);
+    if (key) {
+      localStorage.setItem('copa_api_key', key);
+      setIsApiMode(true);
+      fetchRealDataFromApi(key);
+    } else {
+      localStorage.removeItem('copa_api_key');
+      localStorage.removeItem('copa_api_cache');
+      localStorage.removeItem('copa_api_cache_time');
+      setIsApiMode(false);
+      const initialMatches = generateGroupMatches();
+      setMatches(initialMatches);
+      const initialStandings = calculateStandings(INITIAL_TEAMS, initialMatches);
+      setTeamsState(initialStandings);
+      setBracketNodes(generateKnockoutBracket(initialStandings));
+    }
+  };
+
+  const refreshFromApi = useCallback(() => {
+    if (apiKey) {
+      // Clear cache to force fresh fetch
+      localStorage.removeItem('copa_api_cache');
+      localStorage.removeItem('copa_api_cache_time');
+      fetchRealDataFromApi(apiKey);
+    }
+  }, [apiKey, fetchRealDataFromApi]);
+
+  // ==============================================================
+  // Auto-refresh in API mode: every 60 seconds
+  // ==============================================================
+  useEffect(() => {
+    if (!apiKey) return;
+    setIsApiMode(true);
+    fetchRealDataFromApi(apiKey);
+
+    const autoRefreshInterval = setInterval(() => {
+      if (apiKey) fetchRealDataFromApi(apiKey);
+    }, 60000); // 60 seconds
+
+    return () => clearInterval(autoRefreshInterval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ==============================================================
+  // Manual score update
+  // ==============================================================
+  const updateMatchScore = (matchId: string, homeScore: number, awayScore: number, status: 'FINISHED' | 'LIVE' | 'SCHEDULED') => {
+    setMatches(prev => prev.map(m => {
+      if (m.id !== matchId) return m;
+      const updatedEvents = [...m.events];
+      if (status === 'FINISHED' && m.status !== 'FINISHED') {
+        updatedEvents.push({ id: `ev_${m.id}_manual_end`, minute: 90, type: 'comment', detail: 'Fim de jogo (placar atualizado manualmente).' });
+      }
+      return { ...m, homeScore, awayScore, status, events: updatedEvents };
+    }));
+  };
+
+  const triggerNextSimulationTick = () => {
+    setMatches(prev => prev.map(m => m.status === 'LIVE' ? simulateMatchTick(m, teamsRef.current) : m));
+  };
+
+  return (
+    <CopaContext.Provider value={{
+      teams: teamsState,
+      matches,
+      bracketNodes,
+      selectedMatchId,
+      selectedTeamId,
+      activeTab,
+      apiKey,
+      isApiMode,
+      isLoading,
+      lastUpdated,
+      setApiKey,
+      setSelectedMatchId,
+      setSelectedTeamId,
+      setActiveTab,
+      updateMatchScore,
+      triggerNextSimulationTick,
+      refreshFromApi,
+    }}>
+      {children}
+    </CopaContext.Provider>
+  );
+};
+
+export const useCopa = () => {
+  const context = useContext(CopaContext);
+  if (context === undefined) throw new Error('useCopa deve ser utilizado dentro de um CopaProvider');
+  return context;
+};
