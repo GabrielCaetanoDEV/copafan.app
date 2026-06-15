@@ -132,7 +132,7 @@ function generateRichMatchEvents(
   awayScore: number,
   status: string
 ): MatchEvent[] {
-  if (status !== 'FINISHED') return [];
+  if (status === 'SCHEDULED') return [];
 
   const events: MatchEvent[] = [];
   const totalGoals = homeScore + awayScore;

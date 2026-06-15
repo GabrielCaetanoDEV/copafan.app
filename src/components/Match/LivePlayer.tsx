@@ -183,31 +183,64 @@ export const LivePlayer: React.FC<LivePlayerProps> = ({ match, homeTeam, awayTea
   }
 
   // ================================================================
-  // LIVE — embed the CazéTV live stream on YouTube
-  // The youtubeId should be the live stream ID from CazéTV channel
-  // We use the CazéTV channel live stream as fallback
+  // LIVE — Provide a link to CazéTV since they block embedding
   // ================================================================
-  // URL for specific video or fallback to CazéTV's general live stream URL
-  const liveSrc = (match.youtubeId && match.youtubeId !== 'v2_WswqM37A' && match.youtubeId.length === 11)
-    ? `https://www.youtube.com/embed/${match.youtubeId}?autoplay=1&mute=0&rel=0&modestbranding=1`
-    : `https://www.youtube.com/embed/live_stream?channel=UCTMFN1e3xO4_zTntmHl8DCA&autoplay=1&mute=0&rel=0&modestbranding=1`;
+  const cazeTvLiveUrl = 'https://www.youtube.com/@CazeTV/live';
 
   return (
-    <div className="relative aspect-video w-full rounded-2xl overflow-hidden glass-panel border border-copa-border shadow-2xl">
-      <iframe
-        src={liveSrc}
-        title={`CazéTV Ao Vivo: ${homeTeam?.name} vs ${awayTeam?.name}`}
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-        allowFullScreen
-        className="w-full h-full border-0"
-      />
+    <div className="relative aspect-video w-full rounded-2xl overflow-hidden glass-panel flex flex-col justify-center items-center p-6 text-center group border-copa-border shadow-2xl">
+      <div className="absolute inset-0 bg-gradient-to-t from-copa-bg via-transparent to-transparent opacity-90 z-0" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(220,38,38,0.1)_0%,_transparent_60%)] z-0" />
 
-      {match.status === 'LIVE' && (
-        <div className="absolute top-4 left-4 bg-red-600 border border-red-500 text-white font-bold text-xs uppercase px-2.5 py-1 rounded-md animate-pulse flex items-center gap-1.5 shadow-md pointer-events-none">
-          <Tv size={12} />
-          CazéTV Ao Vivo
+      <div className="absolute top-4 left-4 bg-red-600 border border-red-500 text-white font-bold text-xs uppercase px-2.5 py-1 rounded-md animate-pulse flex items-center gap-1.5 shadow-md pointer-events-none z-20">
+        <Tv size={12} />
+        Ao Vivo
+      </div>
+
+      <div className="z-10 flex flex-col items-center max-w-lg">
+        <div className="flex justify-center items-center gap-6 sm:gap-12 mb-5">
+          <div className="flex flex-col items-center">
+            <span className="text-5xl filter drop-shadow-md">{homeTeam?.flag}</span>
+            <span className="text-sm font-semibold mt-2 text-slate-300">{homeTeam?.name}</span>
+          </div>
+
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex items-center gap-3 bg-red-950/40 px-5 py-2 rounded-2xl border border-red-900/50">
+              <span className="text-3xl font-bold font-mono text-white">{match.homeScore}</span>
+              <span className="text-slate-500 font-bold">×</span>
+              <span className="text-3xl font-bold font-mono text-white">{match.awayScore}</span>
+            </div>
+            {match.minute && (
+              <span className="text-xs font-bold text-red-500 animate-pulse bg-red-500/10 px-2 py-0.5 rounded-md border border-red-500/20">
+                {match.minute}' Minuto
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col items-center">
+            <span className="text-5xl filter drop-shadow-md">{awayTeam?.flag}</span>
+            <span className="text-sm font-semibold mt-2 text-slate-300">{awayTeam?.name}</span>
+          </div>
         </div>
-      )}
+
+        <p className="text-slate-400 text-xs sm:text-sm mb-6 max-w-sm">
+          A partida está rolando no <strong className="text-slate-300">{stadium?.name}</strong>. 
+          A CazéTV não permite reproduzir a live fora do YouTube, clique abaixo para assistir:
+        </p>
+
+        <div className="flex gap-3 flex-wrap justify-center">
+          <a
+            href={cazeTvLiveUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-full font-bold text-sm transition duration-300 flex items-center gap-2 shadow-[0_0_15px_rgba(220,38,38,0.4)]"
+          >
+            <Tv size={16} />
+            Assistir na CazéTV
+            <ExternalLink size={14} className="ml-1" />
+          </a>
+        </div>
+      </div>
     </div>
   );
 };
