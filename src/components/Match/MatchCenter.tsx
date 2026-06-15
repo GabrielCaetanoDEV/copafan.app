@@ -65,15 +65,28 @@ export const MatchCenter: React.FC = () => {
     }
   };
 
+  // Sub-component for LIVE badge with ticking clock per card
+  const LiveBadge: React.FC<{ m: Match }> = ({ m }) => {
+    const { displayMinute, isHalftime } = useLiveClock(m);
+    if (isHalftime) {
+      return (
+        <span className="bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full flex items-center gap-1">
+          <span>⏸</span> Intervalo
+        </span>
+      );
+    }
+    return (
+      <span className="bg-red-600/10 border border-red-500/20 text-red-500 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+        <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+        {displayMinute !== undefined ? `${displayMinute}'` : '●'} AO VIVO
+      </span>
+    );
+  };
+
   const getStatusBadge = (m: Match) => {
     switch (m.status) {
       case 'LIVE':
-        return (
-          <span className="bg-red-600/10 border border-red-500/20 text-red-500 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-            <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
-            {m.minute}' AO VIVO
-          </span>
-        );
+        return <LiveBadge m={m} />;
       case 'FINISHED':
         return (
           <span className="bg-slate-800 border border-slate-700 text-slate-400 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full inline-flex items-center gap-1">
