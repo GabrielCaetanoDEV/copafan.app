@@ -22,3 +22,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Saved web pages (browser "Save As" artifacts)
+*.html
+*_files/
+* - Pesquisa Google*
+
+# Root-level scratch/test scripts
+fetch_api.cjs
+test_*.js
+*.test.js
