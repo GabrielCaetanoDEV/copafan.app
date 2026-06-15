@@ -796,6 +796,7 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
               stats,
               lineups: lineups || undefined,
               minute: realMinute,
+              minuteUpdatedAt: realMinute !== undefined ? now : undefined,
               isHalftime,
               ...(realStatus && { status: realStatus }),
               ...(apiHomeGoals !== undefined && { homeScore: apiHomeGoals }),
@@ -813,7 +814,7 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
         events,
         stats,
         lineups: lineups || undefined,
-        ...(realMinute !== undefined && { minute: realMinute }),
+        ...(realMinute !== undefined && { minute: realMinute, minuteUpdatedAt: now }),
         ...(realStatus && { status: realStatus }),
         isHalftime,
       };

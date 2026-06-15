@@ -5,6 +5,7 @@ import { STADIUMS, Match } from '../../data/copaData';
 import { LivePlayer } from './LivePlayer';
 import { GoogleMatchTabs } from './GoogleMatchTabs';
 import { Search, Tv, Award, Calendar } from 'lucide-react';
+import { useLiveClock } from '../../hooks/useLiveClock';
 
 export const MatchCenter: React.FC = () => {
   const { 
@@ -25,6 +26,9 @@ export const MatchCenter: React.FC = () => {
   const groupStandings = selectedMatch && selectedMatch.group 
     ? teams.filter(t => t.group === selectedMatch.group).sort((a,b) => b.points - a.points)
     : [];
+
+  // Live ticking clock for the selected match
+  const { displayMinute, isHalftime } = useLiveClock(selectedMatch ?? {} as any);
 
   // Filter matches
   const filteredMatches = matches.filter(m => {
@@ -247,10 +251,16 @@ export const MatchCenter: React.FC = () => {
                   </span>
                 </div>
                 {selectedMatch.status === 'LIVE' ? (
-                  <span className="text-xs font-bold text-glow-green text-copa-green mt-2 animate-pulse flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-copa-green rounded-full"></span>
-                    {selectedMatch.minute}' Minuto
-                  </span>
+                  isHalftime ? (
+                    <span className="text-xs font-bold text-yellow-400 mt-2 flex items-center gap-1">
+                      <span>⏸</span> Intervalo
+                    </span>
+                  ) : (
+                    <span className="text-xs font-bold text-glow-green text-copa-green mt-2 animate-pulse flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-copa-green rounded-full"></span>
+                      {displayMinute !== undefined ? `${displayMinute}' Minuto` : 'Ao Vivo'}
+                    </span>
+                  )
                 ) : selectedMatch.status === 'FINISHED' ? (
                   <span className="text-xs text-slate-500 font-semibold uppercase mt-2">Finalizado</span>
                 ) : (

@@ -24,6 +24,8 @@ export interface Player {
   number: number;
   position: 'Goleiro' | 'Defensor' | 'Meio-campista' | 'Atacante';
   isCaptain?: boolean;
+  grid?: string; // API-Football grid position e.g. "2:3" = row 2, col 3
+  isSubstitute?: boolean; // came on as a substitute mid-match
 }
 
 export interface Stadium {
@@ -39,6 +41,7 @@ export interface MatchEvent {
   type: 'goal' | 'yellow_card' | 'red_card' | 'substitution' | 'comment';
   teamId?: string;
   playerName?: string;
+  playerInName?: string; // for substitutions: who came ON
   detail: string;
 }
 
@@ -80,6 +83,7 @@ export interface Match {
   stadiumId: string;
   youtubeId: string;
   minute?: number;
+  minuteUpdatedAt?: number; // Date.now() when minute was last set from API
   isHalftime?: boolean; // true when API reports HT status
   events: MatchEvent[];
   stats: MatchStats;

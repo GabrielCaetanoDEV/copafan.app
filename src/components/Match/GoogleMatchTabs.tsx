@@ -26,8 +26,45 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
   const isFarFuture = match.status === 'SCHEDULED' && matchStartMs > Date.now() + 24 * 60 * 60 * 1000;
   const isNearKickoff = match.status === 'SCHEDULED' && matchStartMs <= Date.now() + 2 * 60 * 60 * 1000;
 
-  // Apply substitution events to get the CURRENT lineup (who is actually on the pitch)
-  const applySubstitutions = (titulares: any[], teamId: string) => {
+  // ---------------------------------------------------------------
+  // Grid-based formation layout
+  // API-Football returns p.grid = "row:col" for each player
+  // Row 1 = GK, Row 2 = DEF, Row 3+ = MID/FWD depending on formation
+  // This correctly handles 4-2-3-1, 4-4-2, 3-5-2, 5-3-2, etc.
+  // ---------------------------------------------------------------
+  const getRowsByGrid = (players: any[]): { players: any[] }[] => {
+    const hasGrid = players.some((p: any) => p.grid);
+
+    if (hasGrid) {
+      const rowMap: Record<number, any[]> = {};
+      for (const p of players) {
+        const rowNum = p.grid ? parseInt((p.grid as string).split(':')[0]) : 99;
+        if (!rowMap[rowNum]) rowMap[rowNum] = [];
+        rowMap[rowNum].push(p);
+      }
+      return Object.keys(rowMap)
+        .map(Number)
+        .sort((a, b) => a - b)
+        .map(rowNum => ({
+          players: rowMap[rowNum].sort((a: any, b: any) => {
+            const aC = a.grid ? parseInt((a.grid as string).split(':')[1]) : 0;
+            const bC = b.grid ? parseInt((b.grid as string).split(':')[1]) : 0;
+            return aC - bC;
+          })
+        }));
+    }
+
+    // Fallback: group by position category (no grid data)
+    return [
+      { players: players.filter((p: any) => p.position === 'Goleiro').slice(0, 1) },
+      { players: players.filter((p: any) => p.position === 'Defensor') },
+      { players: players.filter((p: any) => p.position === 'Meio-campista') },
+      { players: players.filter((p: any) => p.position === 'Atacante') },
+    ].filter(r => r.players.length > 0);
+  };
+
+  // Apply substitution events to update the current lineup
+  const applySubstitutions = (titulares: any[], reservas: any[], teamId: string) => {
     const subs = match.events.filter(e =>
       e.type === 'substitution' &&
       e.teamId?.toLowerCase() === teamId.toLowerCase()
@@ -36,63 +73,62 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
 
     let current = [...titulares];
     for (const sub of subs) {
-      // playerName = who came OUT, detail contains who came IN
-      // The detail format: "Substituição: entra X e sai Y"
-      const inMatch = match.lineups?.home?.reservas?.find(p =>
-        sub.detail?.includes(p.name.split(' ')[0])
-      ) || match.lineups?.away?.reservas?.find(p =>
-        sub.detail?.includes(p.name.split(' ')[0])
+      // Find who went out (by playerName) to get their grid position
+      const playerOut = current.find((p: any) =>
+        sub.playerName && p.name.toLowerCase().includes(
+          sub.playerName.split(' ').pop()?.toLowerCase() || ''
+        )
       );
-      // Remove the player who went out
-      if (sub.playerName) {
-        current = current.filter(p =>
-          !p.name.toLowerCase().includes(sub.playerName!.split(' ').pop()!.toLowerCase())
-        );
+      const inheritGrid = playerOut?.grid;
+
+      // Remove player who went out
+      if (playerOut) {
+        current = current.filter((p: any) => p.id !== playerOut.id);
       }
-      // Add the player who came in (use same position as the one who went out)
-      if (inMatch && !current.find(p => p.id === inMatch.id)) {
-        current.push({ ...inMatch, isSubstitute: true });
+
+      // Find player who came in from bench (by playerInName)
+      if (sub.playerInName) {
+        const playerIn = reservas.find((p: any) =>
+          p.name.toLowerCase().includes(
+            (sub.playerInName as string).split(' ').pop()?.toLowerCase() || ''
+          )
+        );
+        if (playerIn && !current.find((p: any) => p.id === playerIn.id)) {
+          current.push({ ...playerIn, grid: inheritGrid, isSubstitute: true });
+        }
       }
     }
     return current;
   };
 
-  // Build a proper 4-3-3 fallback lineup from the generated squad
-  const buildFallbackLayout = (squad: ReturnType<typeof generateSquad>) => {
+  // Build fallback 4-3-3 from generated squad (no grid data)
+  const buildFallbackRows = (squad: ReturnType<typeof generateSquad>) => {
     const gk = squad.filter(p => p.position === 'Goleiro').slice(0, 1);
     const def = squad.filter(p => p.position === 'Defensor').slice(0, 4);
     const mid = squad.filter(p => p.position === 'Meio-campista').slice(0, 3);
     const fwd = squad.filter(p => p.position === 'Atacante').slice(0, 3);
-    return { Goleiro: gk, Defensor: def, MeioCampista: mid, Atacante: fwd };
+    return [
+      { players: gk },
+      { players: def },
+      { players: mid },
+      { players: fwd },
+    ].filter(r => r.players.length > 0);
   };
-
-  // Group players by position for field layout
-  const getPlayersByPosition = (players: any[]) => ({
-    Goleiro: players.filter((p: any) => p.position === 'Goleiro').slice(0, 1),
-    Defensor: players.filter((p: any) => p.position === 'Defensor'),
-    MeioCampista: players.filter((p: any) => p.position === 'Meio-campista'),
-    Atacante: players.filter((p: any) => p.position === 'Atacante'),
-  });
 
   const hSquad = homeTeam ? generateSquad(homeTeam.id) : [];
   const aSquad = awayTeam ? generateSquad(awayTeam.id) : [];
 
-  // Use real lineup if available, with substitutions applied for in-progress matches
   const homeTitulares = hasRealLineup
-    ? applySubstitutions(match.lineups!.home.titulares, match.homeTeamId)
+    ? applySubstitutions(match.lineups!.home.titulares, match.lineups!.home.reservas ?? [], match.homeTeamId)
     : hSquad;
   const awayTitulares = hasRealLineup
-    ? applySubstitutions(match.lineups!.away.titulares, match.awayTeamId)
+    ? applySubstitutions(match.lineups!.away.titulares, match.lineups!.away.reservas ?? [], match.awayTeamId)
     : aSquad;
 
-  const homeLayout = hasRealLineup
-    ? getPlayersByPosition(homeTitulares)
-    : buildFallbackLayout(hSquad);
-  const awayLayout = hasRealLineup
-    ? getPlayersByPosition(awayTitulares)
-    : buildFallbackLayout(aSquad);
+  const homeRows = hasRealLineup ? getRowsByGrid(homeTitulares) : buildFallbackRows(hSquad);
+  const awayRows = hasRealLineup ? getRowsByGrid(awayTitulares) : buildFallbackRows(aSquad);
 
-  // Count substitutions by team for display
+  // Count substitutions by team
   const homeSubCount = match.events.filter(e => e.type === 'substitution' && e.teamId?.toLowerCase() === match.homeTeamId.toLowerCase()).length;
   const awaySubCount = match.events.filter(e => e.type === 'substitution' && e.teamId?.toLowerCase() === match.awayTeamId.toLowerCase()).length;
 
@@ -399,55 +435,61 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
               <div className="absolute top-2 left-1/2 -translate-x-1/2 w-24 h-10 border-b border-x border-emerald-700/40 pointer-events-none" />
               <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-24 h-10 border-t border-x border-emerald-700/40 pointer-events-none" />
 
-              {/* Away (top): FWD, MID, DEF, GK */}
-              {[
-                { players: awayLayout.Atacante, topPct: 5, bg: '#3b82f6', bd: '#93c5fd', tc: 'white' },
-                { players: awayLayout.MeioCampista, topPct: 18, bg: '#3b82f6', bd: '#93c5fd', tc: 'white' },
-                { players: awayLayout.Defensor, topPct: 31, bg: '#3b82f6', bd: '#93c5fd', tc: 'white' },
-                { players: awayLayout.Goleiro, topPct: 42, bg: '#1e40af', bd: '#93c5fd', tc: 'white' },
-              ].map((row, ri) => row.players.length > 0 && (
-                <div key={`a${ri}`} className="absolute inset-x-3 flex justify-around" style={{ top: `${row.topPct}%` }}>
-                  {row.players.map((p: any) => (
-                    <div key={p.id} className="flex flex-col items-center relative" style={{ minWidth: 36 }}>
-                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg border-2"
-                        style={{ background: p.isSubstitute ? '#7c3aed' : row.bg, borderColor: p.isSubstitute ? '#c4b5fd' : row.bd, color: row.tc }}>
-                        {p.number ?? '?'}
+              {/* Away team (top half): GK at top → FWD approaching midline */}
+              {awayRows.map((row, rowIdx) => {
+                const numRows = awayRows.length;
+                // Spread from 4% (GK at top) to 43% (FWD near midline)
+                const topPct = numRows > 1 ? 4 + rowIdx * (39 / (numRows - 1)) : 20;
+                const isGk = rowIdx === 0;
+                return row.players.length > 0 && (
+                  <div key={`a${rowIdx}`} className="absolute inset-x-3 flex justify-around" style={{ top: `${topPct}%` }}>
+                    {row.players.map((p: any) => (
+                      <div key={p.id} className="flex flex-col items-center relative" style={{ minWidth: 34 }}>
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg border-2"
+                          style={{
+                            background: p.isSubstitute ? '#7c3aed' : (isGk ? '#1e40af' : '#3b82f6'),
+                            borderColor: p.isSubstitute ? '#c4b5fd' : '#93c5fd',
+                            color: 'white'
+                          }}>
+                          {p.number ?? '?'}
+                        </div>
+                        {p.isSubstitute && <span className="absolute -top-1 -right-1 text-[8px] leading-none">🔄</span>}
+                        <span className="text-[8px] text-white mt-0.5 bg-black/70 px-1 rounded truncate max-w-[44px] text-center leading-tight">
+                          {(p.name ?? '').split(' ').pop()}
+                        </span>
                       </div>
-                      {p.isSubstitute && (
-                        <span className="absolute -top-1 -right-1 text-[8px] leading-none">🔄</span>
-                      )}
-                      <span className="text-[8px] text-white mt-0.5 bg-black/70 px-1 rounded truncate max-w-[44px] text-center leading-tight">
-                        {(p.name ?? '').split(' ').pop()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ))}
+                    ))}
+                  </div>
+                );
+              })}
 
-              {/* Home (bottom): GK, DEF, MID, FWD */}
-              {[
-                { players: homeLayout.Goleiro, topPct: 54, bg: '#10b981', bd: '#6ee7b7', tc: 'black' },
-                { players: homeLayout.Defensor, topPct: 65, bg: '#10b981', bd: '#6ee7b7', tc: 'black' },
-                { players: homeLayout.MeioCampista, topPct: 76, bg: '#10b981', bd: '#6ee7b7', tc: 'black' },
-                { players: homeLayout.Atacante, topPct: 87, bg: '#059669', bd: '#34d399', tc: 'black' },
-              ].map((row, ri) => row.players.length > 0 && (
-                <div key={`h${ri}`} className="absolute inset-x-3 flex justify-around" style={{ top: `${row.topPct}%` }}>
-                  {row.players.map((p: any) => (
-                    <div key={p.id} className="flex flex-col items-center relative" style={{ minWidth: 36 }}>
-                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg border-2"
-                        style={{ background: p.isSubstitute ? '#7c3aed' : row.bg, borderColor: p.isSubstitute ? '#c4b5fd' : row.bd, color: row.tc }}>
-                        {p.number ?? '?'}
+              {/* Home team (bottom half): FWD near midline → GK at bottom */}
+              {[...homeRows].reverse().map((row, rowIdx) => {
+                const numRows = homeRows.length;
+                // Spread from 56% (FWD near midline) to 92% (GK at bottom)
+                const topPct = numRows > 1 ? 56 + rowIdx * (36 / (numRows - 1)) : 75;
+                const isGk = rowIdx === numRows - 1;
+                return row.players.length > 0 && (
+                  <div key={`h${rowIdx}`} className="absolute inset-x-3 flex justify-around" style={{ top: `${topPct}%` }}>
+                    {row.players.map((p: any) => (
+                      <div key={p.id} className="flex flex-col items-center relative" style={{ minWidth: 34 }}>
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg border-2"
+                          style={{
+                            background: p.isSubstitute ? '#7c3aed' : (isGk ? '#065f46' : '#10b981'),
+                            borderColor: p.isSubstitute ? '#c4b5fd' : '#6ee7b7',
+                            color: isGk ? 'white' : 'black'
+                          }}>
+                          {p.number ?? '?'}
+                        </div>
+                        {p.isSubstitute && <span className="absolute -top-1 -right-1 text-[8px] leading-none">🔄</span>}
+                        <span className="text-[8px] text-white mt-0.5 bg-black/70 px-1 rounded truncate max-w-[44px] text-center leading-tight">
+                          {(p.name ?? '').split(' ').pop()}
+                        </span>
                       </div>
-                      {p.isSubstitute && (
-                        <span className="absolute -top-1 -right-1 text-[8px] leading-none">🔄</span>
-                      )}
-                      <span className="text-[8px] text-white mt-0.5 bg-black/70 px-1 rounded truncate max-w-[44px] text-center leading-tight">
-                        {(p.name ?? '').split(' ').pop()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ))}
+                    ))}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Reserves */}

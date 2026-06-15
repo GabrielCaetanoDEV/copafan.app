@@ -172,6 +172,7 @@ export const parseApiFootballEvents = (apiEvents: any[], matchId: string): Match
       type,
       teamId: mapTeamNameToTla(ev.team?.name),
       playerName: playerName || undefined,
+      playerInName: ev.type === 'subst' ? (assistName || undefined) : undefined,
       detail: detail,
     };
   });
@@ -205,7 +206,8 @@ export const parseApiFootballLineups = (apiLineupsResponse: any[], homeTla: stri
       name: p.name || 'Jogador',
       number: p.number || 0,
       position: mapPosition(p.pos),
-      isCaptain: p.captain || false
+      isCaptain: p.captain || false,
+      grid: p.grid || undefined, // e.g. "2:3" = row 2, position 3 in row
     };
   };
 

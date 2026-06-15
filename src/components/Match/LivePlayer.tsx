@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Match, Team, Stadium } from '../../data/copaData';
 import { Tv, Calendar, MapPin, Award, ExternalLink } from 'lucide-react';
+import { useLiveClock } from '../../hooks/useLiveClock';
 
 interface LivePlayerProps {
   match: Match;
@@ -23,6 +24,7 @@ const CAZETU_PLAYLIST = 'https://www.youtube.com/playlist?list=PLsFWLnYCEXEVNzCn
 const CAZETU_CHANNEL = 'https://www.youtube.com/@CazeTV';
 
 export const LivePlayer: React.FC<LivePlayerProps> = ({ match, homeTeam, awayTeam, stadium }) => {
+  const { displayMinute, isHalftime } = useLiveClock(match);
   const [timeLeft, setTimeLeft] = useState('');
 
   // Countdown timer for scheduled matches
@@ -210,10 +212,16 @@ export const LivePlayer: React.FC<LivePlayerProps> = ({ match, homeTeam, awayTea
               <span className="text-slate-500 font-bold">×</span>
               <span className="text-3xl font-bold font-mono text-white">{match.awayScore}</span>
             </div>
-            {match.minute && (
-              <span className="text-xs font-bold text-red-500 animate-pulse bg-red-500/10 px-2 py-0.5 rounded-md border border-red-500/20">
-                {match.minute}' Minuto
-              </span>
+            {(displayMinute !== undefined || isHalftime) && (
+              isHalftime ? (
+                <span className="text-xs font-bold text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded-md border border-yellow-500/20">
+                  ⏸ Intervalo
+                </span>
+              ) : (
+                <span className="text-xs font-bold text-red-500 animate-pulse bg-red-500/10 px-2 py-0.5 rounded-md border border-red-500/20">
+                  {displayMinute}' Minuto
+                </span>
+              )
             )}
           </div>
 
