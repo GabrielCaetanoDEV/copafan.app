@@ -141,7 +141,10 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
                   iconBg = 'bg-slate-950 border-slate-700';
                 }
 
-                const eventTeam = event.teamId === match.homeTeamId ? homeTeam : awayTeam;
+                let eventTeam = undefined;
+                if (event.teamId) {
+                  eventTeam = event.teamId.toLowerCase() === match.homeTeamId.toLowerCase() ? homeTeam : awayTeam;
+                }
 
                 return (
                   <div key={event.id} className="flex gap-4 items-start relative group transition duration-300">
