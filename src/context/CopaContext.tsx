@@ -165,13 +165,56 @@ const rateLimiter = new ApiRateLimiter();
 // ==============================================================
 // API-Football Fixture Lookup — uses /fixtures?date= (free plan compatible)
 // ==============================================================
+// Additional name aliases API-Football uses that differ from our TEAM_NAME_TO_TLA
+const API_FOOTBALL_ALIASES: Record<string, string> = {
+  'Cape Verde Islands': 'CPV',
+  'Cape Verde': 'CPV',
+  'Korea Republic': 'KOR',
+  'South Korea': 'KOR',
+  'Congo DR': 'COD',
+  'DR Congo': 'COD',
+  'Bosnia & Herzegovina': 'BIH',
+  'Bosnia and Herzegovina': 'BIH',
+  'Czech Republic': 'CZE',
+  'Czechia': 'CZE',
+  'Ivory Coast': 'CIV',
+  "Côte d'Ivoire": 'CIV',
+  'United States': 'USA',
+  'Curaçao': 'CUW',
+};
+
+const resolveTeamTla = (apiName: string): string => {
+  if (!apiName) return 'TBD';
+  if (API_FOOTBALL_ALIASES[apiName]) return API_FOOTBALL_ALIASES[apiName];
+  return mapTeamNameToTla(apiName);
+};
+
 const fetchFixtureByDate = async (match: Match): Promise<number | null> => {
   const matchDate = new Date(match.date).toISOString().split('T')[0];
-  const cacheKey = `api_football_fixture_${match.homeTeamId}_${match.awayTeamId}_${matchDate}`;
-  
-  const cached = localStorage.getItem(cacheKey);
-  if (cached) {
-    try { return JSON.parse(cached); } catch { /* ignore */ }
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Don't waste API calls for matches more than 1 day in the future
+  if (matchDate > todayStr) {
+    console.log(`Fixture ${match.homeTeamId} vs ${match.awayTeamId} is in the future (${matchDate}), skipping API-Football lookup.`);
+    return null;
+  }
+
+  // Fast cache by match.id
+  const matchIdCacheKey = `api_football_fixture_matchid_${match.id}`;
+  const byMatchId = localStorage.getItem(matchIdCacheKey);
+  if (byMatchId) {
+    try { return JSON.parse(byMatchId); } catch { /* ignore */ }
+  }
+
+  // Cache by team/date
+  const dateCacheKey = `api_football_fixture_${match.homeTeamId}_${match.awayTeamId}_${matchDate}`;
+  const byDate = localStorage.getItem(dateCacheKey);
+  if (byDate) {
+    try {
+      const id = JSON.parse(byDate);
+      localStorage.setItem(matchIdCacheKey, JSON.stringify(id));
+      return id;
+    } catch { /* ignore */ }
   }
 
   try {
@@ -184,10 +227,10 @@ const fetchFixtureByDate = async (match: Match): Promise<number | null> => {
     const data = await res.json();
     if (!data.response || data.response.length === 0) return null;
 
-    // Find WC fixture by matching team names
+    // Find WC fixture by matching team names (with expanded aliases)
     const fixture = data.response.find((f: any) => {
-      const fHomeTla = mapTeamNameToTla(f.teams.home.name);
-      const fAwayTla = mapTeamNameToTla(f.teams.away.name);
+      const fHomeTla = resolveTeamTla(f.teams.home.name);
+      const fAwayTla = resolveTeamTla(f.teams.away.name);
       return (
         (fHomeTla === match.homeTeamId && fAwayTla === match.awayTeamId) ||
         (fHomeTla === match.awayTeamId && fAwayTla === match.homeTeamId)
@@ -196,9 +239,17 @@ const fetchFixtureByDate = async (match: Match): Promise<number | null> => {
 
     if (fixture) {
       const fixtureId = fixture.fixture.id;
-      localStorage.setItem(cacheKey, JSON.stringify(fixtureId));
+      // Cache by both keys
+      localStorage.setItem(dateCacheKey, JSON.stringify(fixtureId));
+      localStorage.setItem(matchIdCacheKey, JSON.stringify(fixtureId));
+      console.log(`Found fixture ID ${fixtureId} for ${match.homeTeamId} vs ${match.awayTeamId}`);
       return fixtureId;
     }
+    
+    console.warn(`No fixture found for ${match.homeTeamId} vs ${match.awayTeamId} on ${matchDate}`);
+    console.log('Available WC fixtures today:', data.response
+      .filter((f: any) => f.league?.name?.includes('World Cup'))
+      .map((f: any) => `${f.teams.home.name} vs ${f.teams.away.name}`));
   } catch (err) {
     console.error('Failed to find fixture by date:', err);
   }
@@ -489,21 +540,24 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchRealDataFromApi = useCallback(async (key: string) => {
     if (!key) return;
 
-    // Check localStorage cache - use if less than 60 seconds old
     const cacheKey = 'copa_api_cache_v2';
     const cacheTimeKey = 'copa_api_cache_time_v2';
     const cachedTime = localStorage.getItem(cacheTimeKey);
     const now = Date.now();
 
-    if (cachedTime && now - parseInt(cachedTime) < 600000) {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        try {
-          const data = JSON.parse(cached);
-          applyApiData(data, key);
-          return;
-        } catch { /* ignore */ }
-      }
+    // Use cache if fresh — but only 2min if there might be live matches today
+    const cachedData = localStorage.getItem(cacheKey);
+    const cacheTTL = 120000; // always 2 minutes — keeps status fresh when match starts
+    if (cachedTime && now - parseInt(cachedTime) < cacheTTL && cachedData) {
+      try {
+        const data = JSON.parse(cachedData);
+        // Check if any match today has a live/recent timestamp — if so use cache but
+        // mark status with local time heuristic (done in applyApiData)
+        applyApiData(data, key);
+        // Still fetch in background if older than 90s to keep data fresh
+        if (now - parseInt(cachedTime) < 90000) return;
+        // Otherwise fall through to refresh silently
+      } catch { /* ignore */ }
     }
 
     // Rate limit check
@@ -743,7 +797,7 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [selectedMatchId, selectedMatchStatus, selectedMatchDate, isApiMode, fetchLiveMatchDetails]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ==============================================================
-  // Auto-refresh in API mode: every 10 minutes (600,000 ms)
+  // Auto-refresh matches list every 2 minutes (keeps LIVE status transitions fast)
   // ==============================================================
   useEffect(() => {
     if (!apiKey) return;
@@ -753,7 +807,7 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const autoRefreshInterval = setInterval(() => {
       if (apiKey) fetchRealDataFromApi(apiKey);
-    }, 600000); // 10 minutes
+    }, 120000); // 2 minutes — matches cache TTL
 
     return () => clearInterval(autoRefreshInterval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

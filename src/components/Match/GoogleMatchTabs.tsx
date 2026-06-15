@@ -20,6 +20,11 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
 
   const hasRealLineup = match.lineups && match.lineups.home && match.lineups.away;
 
+  // Is this match too far in the future to have any data?
+  const matchStartMs = new Date(match.date).getTime();
+  const isFarFuture = match.status === 'SCHEDULED' && matchStartMs > Date.now() + 24 * 60 * 60 * 1000;
+  const isNearKickoff = match.status === 'SCHEDULED' && matchStartMs <= Date.now() + 2 * 60 * 60 * 1000;
+
   // Build a proper 1-4-3-3 fallback lineup from the generated squad
   const buildFallbackLayout = (squad: ReturnType<typeof generateSquad>) => {
     // squad is sorted: [Goleiros x3, Defensores x7, Meios x7, Atacantes x6]
@@ -136,16 +141,36 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
 
       {/* Content Area */}
       <div className="p-4 sm:p-6 bg-slate-900/30 flex-1 min-h-[350px] max-h-[500px] overflow-y-auto scrollbar-thin">
-        
+
+        {/* Far-future match: show placeholder for all tabs */}
+        {isFarFuture ? (
+          <div className="flex flex-col items-center justify-center h-full py-16 gap-4 text-slate-500">
+            <Clock size={40} className="text-slate-700" />
+            <p className="text-sm font-semibold text-slate-400">Dados ainda não disponíveis</p>
+            <p className="text-xs text-center">
+              Escalação, estatísticas e lance a lance serão carregados
+              <br/>próximo ao início da partida.
+            </p>
+            <div className="text-xs text-slate-600 bg-slate-900 px-3 py-1.5 rounded-full border border-slate-800">
+              {new Date(match.date).toLocaleString('pt-BR', {
+                weekday: 'long', day: 'numeric', month: 'long',
+                hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo'
+              })}
+            </div>
+          </div>
+        ) : (
+        <>
+
         {/* Tab 1: Timeline */}
         {activeTab === 'timeline' && (
           <div className="space-y-4 relative before:absolute before:top-2 before:bottom-2 before:left-[19px] before:w-[2px] before:bg-slate-800">
             {match.events.length === 0 ? (
               <div className="text-center py-10 text-slate-500 text-sm flex flex-col items-center gap-3">
                 <Clock size={32} className="text-slate-700" />
-                {match.status === 'SCHEDULED' && <p>Partida ainda não iniciada. O lance a lance começará junto com o apito inicial.</p>}
+                {match.status === 'SCHEDULED' && !isNearKickoff && <p>Partida ainda não iniciada. O lance a lance começará junto com o apito inicial.</p>}
+                {match.status === 'SCHEDULED' && isNearKickoff && <p>Partida prestes a começar! Lance a lance disponível ao apito inicial. <span className="block text-xs text-slate-600 mt-1">Atualizando a cada 5 minutos.</span></p>}
                 {match.status === 'FINISHED' && <p>Lance a lance não disponível para esta partida.<br/><span className="text-xs text-slate-600">Os dados de eventos são carregados via API ao selecionar uma partida encerrada recente.</span></p>}
-                {match.status === 'LIVE' && <p>Carregando lance a lance...</p>}
+                {match.status === 'LIVE' && <p className="animate-pulse">⏳ Carregando lance a lance em tempo real...</p>}
               </div>
             ) : (
               match.events.map((event) => {
@@ -407,6 +432,9 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
               </tbody>
             </table>
           </div>
+        )}
+
+        </> 
         )}
       </div>
     </div>
