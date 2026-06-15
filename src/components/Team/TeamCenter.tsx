@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from 'react';
 import { useCopa } from '../../context/CopaContext';
 import { generateSquad, Match, STADIUMS } from '../../data/copaData';

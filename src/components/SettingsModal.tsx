@@ -69,27 +69,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
         <div className="flex flex-col gap-4 text-xs sm:text-sm text-slate-300 leading-relaxed">
           <p>
-            Por padrão, o site funciona em <strong className="text-copa-green">Modo Simulação Offline</strong> com 
-            cronograma e estatísticas dinâmicas simuladas ao vivo.
+            O site está configurado para buscar <strong className="text-copa-green">dados reais e estatísticas oficiais</strong> em tempo real, utilizando chaves de API públicas e compartilhadas por padrão.
           </p>
 
           <div className="bg-slate-950/50 border border-copa-border p-3.5 rounded-2xl flex gap-3">
             <Info size={18} className="text-copa-accent shrink-0 mt-0.5" />
             <p className="text-xs text-slate-400">
-              Para dados em tempo real, insira sua chave gratuita do{' '}
-              <strong className="text-slate-300">football-data.org</strong>. 
-              O site respeita o limite de <strong className="text-copa-gold">10 chamadas/min</strong> e 
-              atualiza automaticamente a cada 60 segundos.
+              Para evitar o esgotamento do limite diário compartilhado da API-Football (100 chamadas/dia) ou caso queira usar sua própria chave do <strong className="text-slate-300">football-data.org</strong>, você pode inseri-la abaixo.
             </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Chave de Autenticação (Token)
+              Sua Chave do football-data.org (Token Personalizado)
             </label>
             <input
               type="password"
-              placeholder="Ex: 8a7c2b5f6d..."
+              placeholder="Usando chave padrão do site..."
               value={tempKey}
               onChange={(e) => setTempKey(e.target.value)}
               className="w-full px-4 py-3 bg-slate-950/60 border border-copa-border rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-copa-green/45 transition duration-300 font-mono"

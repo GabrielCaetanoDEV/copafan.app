@@ -466,7 +466,7 @@ export function generateGroupMatches(): Match[] {
         events.push({ id: `ev_${matchCounter}_live_start`, minute: 1, type: 'comment', detail: 'BOLA ROLANDO! Começa o espetáculo da Copa do Mundo 2026.' });
         matches.push({ id: `M_${String(matchCounter).padStart(3, '0')}`, homeTeamId: matchup.h, awayTeamId: matchup.a, homeScore, awayScore, date: matchDate.toISOString(), status, stage: 'GROUP', group: groupName, stadiumId: STADIUMS[stadiumIndex].id, youtubeId, minute: currentMinute, events, stats: makeEmptyStats() });
       } else {
-        matches.push({ id: `M_${String(matchCounter).padStart(3, '0')}`, homeTeamId: matchup.h, awayTeamId: matchup.a, homeScore: null, awayScore: null, date: matchDate.toISOString(), status: 'SCHEDULED', stage: 'GROUP', group: groupName, stadiumId: STADIUMS[stadiumIndex].id, youtubeId, events: [], stats: makeEmptyStats() });
+        matches.push({ id: `M_${String(matchCounter).padStart(3, '0')}`, homeTeamId: matchup.h, awayTeamId: matchup.a, homeScore, awayScore, date: matchDate.toISOString(), status, stage: 'GROUP', group: groupName, stadiumId: STADIUMS[stadiumIndex].id, youtubeId, events: [], stats: makeEmptyStats() });
       }
 
       matchCounter++;

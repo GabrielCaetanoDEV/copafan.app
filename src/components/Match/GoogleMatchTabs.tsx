@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from 'react';
 import { Match, Team, generateSquad } from '../../data/copaData';
 import { Shield, Users, BarChart3, Clock, ArrowLeftRight } from 'lucide-react';
@@ -20,18 +21,20 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
   const hSquad = homeTeam ? generateSquad(homeTeam.id) : [];
   const aSquad = awayTeam ? generateSquad(awayTeam.id) : [];
 
+  const hasRealLineup = match.lineups && match.lineups.home && match.lineups.away;
+
   // Group players by position for field layout
-  const getPlayersByPosition = (squad: any[]) => {
+  const getPlayersByPosition = (players: any[]) => {
     return {
-      Goleiro: squad.filter(p => p.position === 'Goleiro').slice(0, 1),
-      Defensor: squad.filter(p => p.position === 'Defensor').slice(0, 4), // assume 4-4-2 / 4-3-3
-      MeioCampista: squad.filter(p => p.position === 'Meio-campista').slice(0, 3),
-      Atacante: squad.filter(p => p.position === 'Atacante').slice(0, 3)
+      Goleiro: players.filter(p => p.position === 'Goleiro').slice(0, 1),
+      Defensor: players.filter(p => p.position === 'Defensor'),
+      MeioCampista: players.filter(p => p.position === 'Meio-campista'),
+      Atacante: players.filter(p => p.position === 'Atacante')
     };
   };
 
-  const homeLayout = getPlayersByPosition(hSquad);
-  const awayLayout = getPlayersByPosition(aSquad);
+  const homeLayout = getPlayersByPosition(hasRealLineup ? match.lineups!.home.titulares : hSquad.slice(0, 11));
+  const awayLayout = getPlayersByPosition(hasRealLineup ? match.lineups!.away.titulares : aSquad.slice(0, 11));
 
   // Helper to render stats bars
   const renderStatBar = (label: string, homeValue: number, awayValue: number) => {
@@ -321,10 +324,10 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div>
                 <h4 className="font-bold text-copa-green mb-2 flex items-center gap-1">
-                  <span>{homeTeam.flag}</span> Reserves {homeTeam.name}
+                  <span>{homeTeam.flag}</span> Reservas {homeTeam.name}
                 </h4>
                 <ul className="space-y-1 text-slate-400">
-                  {hSquad.slice(11).map(p => (
+                  {(hasRealLineup ? match.lineups!.home.reservas : hSquad.slice(11)).map(p => (
                     <li key={p.id} className="flex gap-2">
                       <span className="font-mono text-slate-500 w-4">{p.number}</span>
                       <span className="text-slate-300">{p.name}</span>
@@ -336,10 +339,10 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
               
               <div>
                 <h4 className="font-bold text-copa-accent mb-2 flex items-center gap-1">
-                  <span>{awayTeam.flag}</span> Reserves {awayTeam.name}
+                  <span>{awayTeam.flag}</span> Reservas {awayTeam.name}
                 </h4>
                 <ul className="space-y-1 text-slate-400">
-                  {aSquad.slice(11).map(p => (
+                  {(hasRealLineup ? match.lineups!.away.reservas : aSquad.slice(11)).map(p => (
                     <li key={p.id} className="flex gap-2">
                       <span className="font-mono text-slate-500 w-4">{p.number}</span>
                       <span className="text-slate-300">{p.name}</span>

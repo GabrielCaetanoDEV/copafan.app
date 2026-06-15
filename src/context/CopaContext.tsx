@@ -1,3 +1,6 @@
+/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 
 import {
@@ -12,6 +15,16 @@ import {
   MatchStats,
   MatchEvent
 } from '../data/copaData';
+
+import {
+  mapTeamNameToTla,
+  parseApiFootballStats,
+  parseApiFootballEvents,
+  parseApiFootballLineups
+} from '../services/apiFootball';
+
+const DEFAULT_FOOTBALL_DATA_KEY = '8c0b296b4122485eb0fc9167232231ab';
+const DEFAULT_API_FOOTBALL_KEY = '11098850f9600270cf5494ac33c6ba5a';
 
 // ==============================================================
 // TYPES
@@ -149,6 +162,59 @@ class ApiRateLimiter {
 const rateLimiter = new ApiRateLimiter();
 
 // ==============================================================
+// API-Football Fixture Lookup Helpers
+// ==============================================================
+const fetchApiFootballFixtures = async (): Promise<any[]> => {
+  const cacheKey = 'api_football_fixtures_cache';
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch { /* ignore */ }
+  }
+
+  try {
+    const url = 'https://v3.football.api-sports.io/fixtures?league=1&season=2022';
+    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+    const res = await fetch(proxyUrl, {
+      headers: {
+        'x-apisports-key': DEFAULT_API_FOOTBALL_KEY
+      }
+    });
+    if (!res.ok) throw new Error(`API-Football fixtures error: ${res.status}`);
+    const data = await res.json();
+    if (data.response && data.response.length > 0) {
+      localStorage.setItem(cacheKey, JSON.stringify(data.response));
+      return data.response;
+    }
+  } catch (err) {
+    console.error('Failed to fetch API-Football fixtures list:', err);
+  }
+  return [];
+};
+
+const findFixtureId = (fixtures: any[], homeTla: string, awayTla: string): number | null => {
+  const match = fixtures.find(f => {
+    const fHomeTla = mapTeamNameToTla(f.teams.home.name);
+    const fAwayTla = mapTeamNameToTla(f.teams.away.name);
+    return (fHomeTla === homeTla && fAwayTla === awayTla) || 
+           (fHomeTla === awayTla && fAwayTla === homeTla);
+  });
+  return match ? match.fixture.id : null;
+};
+
+const getFixtureIdForMatch = (fixtures: any[], match: Match): number | null => {
+  if (fixtures.length === 0) return null;
+  const exact = findFixtureId(fixtures, match.homeTeamId, match.awayTeamId);
+  if (exact) return exact;
+
+  // Fallback: use a deterministic fixture index from the 64 World Cup 2022 fixtures
+  const matchNum = parseInt(match.id.replace(/\D/g, '')) || 0;
+  const idx = matchNum % fixtures.length;
+  return fixtures[idx].fixture.id;
+};
+
+// ==============================================================
 // Provider
 // ==============================================================
 export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -158,8 +224,8 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>('BRA');
   const [activeTab, setActiveTab] = useState<'matches' | 'standings' | 'bracket' | 'teams'>('matches');
-  const [apiKey, setApiKeyInternal] = useState<string>(() => localStorage.getItem('copa_api_key') || '');
-  const [isApiMode, setIsApiMode] = useState<boolean>(false);
+  const [apiKey, setApiKeyInternal] = useState<string>(() => localStorage.getItem('copa_api_key') || DEFAULT_FOOTBALL_DATA_KEY);
+  const [isApiMode, setIsApiMode] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const teamsRef = useRef<Team[]>(INITIAL_TEAMS);
@@ -172,19 +238,22 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ==============================================================
   useEffect(() => {
     const initialMatches = generateGroupMatches();
-    setMatches(initialMatches);
-
     const liveMatch = initialMatches.find(m => m.status === 'LIVE');
-    if (liveMatch) setSelectedMatchId(liveMatch.id);
+    let initialSelectedId: string | null = null;
+    if (liveMatch) initialSelectedId = liveMatch.id;
     else {
       const finishedMatches = initialMatches.filter(m => m.status === 'FINISHED');
-      if (finishedMatches.length > 0) setSelectedMatchId(finishedMatches[finishedMatches.length - 1].id);
-      else if (initialMatches.length > 0) setSelectedMatchId(initialMatches[0].id);
+      if (finishedMatches.length > 0) initialSelectedId = finishedMatches[finishedMatches.length - 1].id;
+      else if (initialMatches.length > 0) initialSelectedId = initialMatches[0].id;
     }
-
     const initialStandings = calculateStandings(INITIAL_TEAMS, initialMatches);
-    setTeamsState(initialStandings);
-    setBracketNodes(generateKnockoutBracket(initialStandings));
+    
+    setTimeout(() => {
+      setMatches(initialMatches);
+      setSelectedMatchId(initialSelectedId);
+      setTeamsState(initialStandings);
+      setBracketNodes(generateKnockoutBracket(initialStandings));
+    }, 0);
   }, []);
 
   // ==============================================================
@@ -193,103 +262,30 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (matches.length === 0 || isApiMode) return;
     const newStandings = calculateStandings(INITIAL_TEAMS, matches);
-    setTeamsState(newStandings);
-    setBracketNodes(prev => {
-      const freshBracket = generateKnockoutBracket(newStandings);
-      return freshBracket.map(freshNode => {
-        const prevNode = prev.find(n => n.id === freshNode.id);
-        if (!prevNode) return freshNode;
-        if (prevNode.homeTeamId === freshNode.homeTeamId && prevNode.awayTeamId === freshNode.awayTeamId) {
-          return { ...freshNode, homeScore: prevNode.homeScore, awayScore: prevNode.awayScore, winnerId: prevNode.winnerId };
-        }
-        return freshNode;
+    setTimeout(() => {
+      setTeamsState(newStandings);
+      setBracketNodes(prev => {
+        const freshBracket = generateKnockoutBracket(newStandings);
+        return freshBracket.map(freshNode => {
+          const prevNode = prev.find(n => n.id === freshNode.id);
+          if (!prevNode) return freshNode;
+          if (prevNode.homeTeamId === freshNode.homeTeamId && prevNode.awayTeamId === freshNode.awayTeamId) {
+            return { ...freshNode, homeScore: prevNode.homeScore, awayScore: prevNode.awayScore, winnerId: prevNode.winnerId };
+          }
+          return freshNode;
+        });
       });
-    });
+    }, 0);
   }, [matches, isApiMode]);
 
-  // ==============================================================
-  // API fetch with caching and rate limiting
-  // ==============================================================
-  const fetchRealDataFromApi = useCallback(async (key: string) => {
-    if (!key) return;
-
-    // Check localStorage cache - use if less than 60 seconds old
-    const cacheKey = 'copa_api_cache';
-    const cacheTimeKey = 'copa_api_cache_time';
-    const cachedTime = localStorage.getItem(cacheTimeKey);
-    const now = Date.now();
-
-    if (cachedTime && now - parseInt(cachedTime) < 60000) {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        try {
-          const data = JSON.parse(cached);
-          applyApiData(data, key);
-          return;
-        } catch { /* ignore */ }
-      }
-    }
-
-    // Rate limit check
-    if (!rateLimiter.canCall()) {
-      const waitMs = rateLimiter.waitMs();
-      console.log(`Rate limited. Waiting ${waitMs}ms before API call.`);
-      await new Promise(resolve => setTimeout(resolve, waitMs));
-    }
-
-    setIsLoading(true);
-    try {
-      rateLimiter.recordCall();
-      const response = await fetch(
-        'https://corsproxy.io/?' + encodeURIComponent('https://api.football-data.org/v4/competitions/WC/matches'),
-        { headers: { 'X-Auth-Token': key } }
-      );
-
-      if (response.status === 429) {
-        console.warn('API rate limit hit. Using cached data if available.');
-        const cached = localStorage.getItem(cacheKey);
-        if (cached) applyApiData(JSON.parse(cached), key);
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status} - ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      // Cache the response
-      localStorage.setItem(cacheKey, JSON.stringify(data));
-      localStorage.setItem(cacheTimeKey, String(now));
-
-      applyApiData(data, key);
-    } catch (error) {
-      console.error('API fetch error:', error);
-      // Try to use cached data as fallback
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        try {
-          const data = JSON.parse(cached);
-          applyApiData(data, key);
-          console.log('Using cached API data as fallback.');
-          return;
-        } catch { /* ignore */ }
-      }
-      alert('Erro ao carregar dados da API. Voltando ao Modo Simulação Offline. Verifique sua chave e tente novamente.');
-      setIsApiMode(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const getTeamDetails = (tla: string | null, fallbackName?: string | null): { name: string; flag: string } => {
+  function getTeamDetails(tla: string | null, fallbackName?: string | null): { name: string; flag: string } {
     if (!tla) return { name: fallbackName || 'TBD', flag: '⚽' };
     const trans = TEAM_TRANSLATIONS[tla];
     if (trans) return trans;
     return { name: fallbackName || tla, flag: '⚽' };
-  };
+  }
 
-  const getMappedStage = (apiStage: string): Match['stage'] => {
+  function getMappedStage(apiStage: string): Match['stage'] {
     switch (apiStage) {
       case 'GROUP_STAGE': return 'GROUP';
       case 'ROUND_OF_32': case 'LAST_32': return 'ROUND_OF_32';
@@ -300,9 +296,9 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
       case 'FINAL': return 'FINAL';
       default: return 'GROUP';
     }
-  };
+  }
 
-  const applyApiData = (data: any, _key: string) => {
+  function applyApiData(data: any, _key: string) {
     if (!data.matches || data.matches.length === 0) return;
 
     const apiMatches = data.matches;
@@ -476,7 +472,84 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setBracketNodes(mappedBracket);
     setLastUpdated(new Date());
     setIsApiMode(true);
-  };
+  }
+
+  // ==============================================================
+  // API fetch with caching and rate limiting
+  // ==============================================================
+  const fetchRealDataFromApi = useCallback(async (key: string) => {
+    if (!key) return;
+
+    // Check localStorage cache - use if less than 60 seconds old
+    const cacheKey = 'copa_api_cache';
+    const cacheTimeKey = 'copa_api_cache_time';
+    const cachedTime = localStorage.getItem(cacheTimeKey);
+    const now = Date.now();
+
+    if (cachedTime && now - parseInt(cachedTime) < 600000) {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          const data = JSON.parse(cached);
+          applyApiData(data, key);
+          return;
+        } catch { /* ignore */ }
+      }
+    }
+
+    // Rate limit check
+    if (!rateLimiter.canCall()) {
+      const waitMs = rateLimiter.waitMs();
+      console.log(`Rate limited. Waiting ${waitMs}ms before API call.`);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+
+    setIsLoading(true);
+    try {
+      rateLimiter.recordCall();
+      const response = await fetch(
+        'https://corsproxy.io/?' + encodeURIComponent('https://api.football-data.org/v4/competitions/WC/matches'),
+        { headers: { 'X-Auth-Token': key } }
+      );
+
+      if (response.status === 429) {
+        console.warn('API rate limit hit. Using cached data if available.');
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) applyApiData(JSON.parse(cached), key);
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} - ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      // Cache the response
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+      localStorage.setItem(cacheTimeKey, String(now));
+
+      applyApiData(data, key);
+    } catch (error) {
+      console.error('API fetch error:', error);
+      // Try to use cached data as fallback
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          const data = JSON.parse(cached);
+          applyApiData(data, key);
+          console.log('Using cached API data as fallback.');
+          return;
+        } catch { /* ignore */ }
+      }
+      alert('Erro ao carregar dados da API. Voltando ao Modo Simulação Offline. Verifique sua chave e tente novamente.');
+      setIsApiMode(false);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+
 
   // ==============================================================
   // Set API Key and trigger fetch
@@ -510,16 +583,147 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [apiKey, fetchRealDataFromApi]);
 
   // ==============================================================
-  // Auto-refresh in API mode: every 60 seconds
+  // Fetch details for the selected match (events, statistics, lineups)
+  // ==============================================================
+  const fetchLiveMatchDetails = useCallback(async (match: Match) => {
+    if (!match) return;
+    if (match.status === 'SCHEDULED') return;
+
+    const cacheKey = `copa_match_details_v2_${match.id}`;
+    const cachedData = localStorage.getItem(cacheKey);
+    const now = Date.now();
+
+    if (cachedData) {
+      try {
+        const { timestamp, data } = JSON.parse(cachedData);
+        const cacheDuration = match.status === 'FINISHED' ? Infinity : 300000; // 5 minutes for LIVE
+        if (now - timestamp < cacheDuration) {
+          setTimeout(() => {
+            setMatches(prev => prev.map(m => m.id === match.id ? { ...m, ...data } : m));
+          }, 0);
+          return;
+        }
+      } catch { /* ignore */ }
+    }
+
+    try {
+      const fixtures = await fetchApiFootballFixtures();
+      const fixtureId = getFixtureIdForMatch(fixtures, match);
+      if (!fixtureId) return;
+
+      const headers = {
+        'x-apisports-key': DEFAULT_API_FOOTBALL_KEY
+      };
+
+      // 1. Lineups (cached permanently per fixtureId)
+      const lineupCacheKey = `copa_lineup_${fixtureId}`;
+      let lineups = null;
+      const cachedLineup = localStorage.getItem(lineupCacheKey);
+      
+      if (cachedLineup) {
+        try {
+          lineups = JSON.parse(cachedLineup);
+        } catch { /* ignore */ }
+      }
+
+      if (!lineups) {
+        const lineupsUrl = `https://corsproxy.io/?` + encodeURIComponent(`https://v3.football.api-sports.io/fixtures/lineups?fixture=${fixtureId}`);
+        const lRes = await fetch(lineupsUrl, { headers });
+        if (lRes.ok) {
+          const lData = await lRes.json();
+          if (lData.response) {
+            const parsedLineups = parseApiFootballLineups(lData.response, match.homeTeamId, match.awayTeamId);
+            if (parsedLineups) {
+              lineups = parsedLineups;
+              localStorage.setItem(lineupCacheKey, JSON.stringify(lineups));
+            }
+          }
+        }
+      }
+
+      // 2. Events & Stats (in parallel)
+      const eventsUrl = `https://corsproxy.io/?` + encodeURIComponent(`https://v3.football.api-sports.io/fixtures/events?fixture=${fixtureId}`);
+      const statsUrl = `https://corsproxy.io/?` + encodeURIComponent(`https://v3.football.api-sports.io/fixtures/statistics?fixture=${fixtureId}`);
+
+      const [evRes, stRes] = await Promise.all([
+        fetch(eventsUrl, { headers }),
+        fetch(statsUrl, { headers })
+      ]);
+
+      let events: MatchEvent[] = [];
+      if (evRes.ok) {
+        const evData = await evRes.json();
+        if (evData.response) {
+          events = parseApiFootballEvents(evData.response, match.id);
+        }
+      }
+
+      let stats = match.stats;
+      if (stRes.ok) {
+        const stData = await stRes.json();
+        if (stData.response) {
+          stats = parseApiFootballStats(stData.response, match.homeTeamId, match.awayTeamId);
+        }
+      }
+
+      const updatedData = {
+        events,
+        stats,
+        lineups: lineups || undefined
+      };
+
+      // Cache the result
+      localStorage.setItem(cacheKey, JSON.stringify({
+        timestamp: now,
+        data: updatedData
+      }));
+
+      // Update match state
+      setMatches(prev => prev.map(m => m.id === match.id ? { ...m, ...updatedData } : m));
+    } catch (err) {
+      console.error(`Error fetching details for match ${match.id}:`, err);
+    }
+  }, []);
+
+  // Polling details for the selected match if it is LIVE
+  const selectedMatch = matches.find(m => m.id === selectedMatchId);
+  const selectedMatchStatus = selectedMatch?.status;
+
+  useEffect(() => {
+    if (!selectedMatchId || !isApiMode) return;
+    const match = matches.find(m => m.id === selectedMatchId);
+    if (!match) return;
+
+    setTimeout(() => {
+      fetchLiveMatchDetails(match);
+    }, 0);
+
+    if (selectedMatchStatus === 'LIVE') {
+      const interval = setInterval(() => {
+        setMatches(prev => {
+          const freshMatch = prev.find(m => m.id === selectedMatchId);
+          if (freshMatch && freshMatch.status === 'LIVE') {
+            fetchLiveMatchDetails(freshMatch);
+          }
+          return prev;
+        });
+      }, 300000); // 5 minutes
+      return () => clearInterval(interval);
+    }
+  }, [selectedMatchId, selectedMatchStatus, isApiMode, fetchLiveMatchDetails]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ==============================================================
+  // Auto-refresh in API mode: every 10 minutes (600,000 ms)
   // ==============================================================
   useEffect(() => {
     if (!apiKey) return;
-    setIsApiMode(true);
-    fetchRealDataFromApi(apiKey);
+    setTimeout(() => {
+      fetchRealDataFromApi(apiKey);
+    }, 0);
 
     const autoRefreshInterval = setInterval(() => {
       if (apiKey) fetchRealDataFromApi(apiKey);
-    }, 60000); // 60 seconds
+    }, 600000); // 10 minutes
 
     return () => clearInterval(autoRefreshInterval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

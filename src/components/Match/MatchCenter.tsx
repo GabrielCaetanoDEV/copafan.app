@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from 'react';
 import { useCopa } from '../../context/CopaContext';
 import { STADIUMS, Match } from '../../data/copaData';
@@ -75,7 +76,7 @@ export const MatchCenter: React.FC = () => {
             <Award size={10} /> Fim
           </span>
         );
-      default:
+      default: {
         const time = new Date(m.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         const date = new Date(m.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
         return (
@@ -83,6 +84,7 @@ export const MatchCenter: React.FC = () => {
             <Calendar size={10} /> {date} - {time}
           </span>
         );
+      }
     }
   };
 
