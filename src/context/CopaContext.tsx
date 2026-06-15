@@ -567,7 +567,6 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Generate realistic stats based on score and time
-      const isComplete = apiStatus === 'FINISHED';
       const statsMultiplier = currentMinute / 90;
       const basePossession = 40 + (Math.abs((idx * 7) % 20)); // Deterministic pseudo-random 40-60
       
