@@ -187,47 +187,20 @@ export const LivePlayer: React.FC<LivePlayerProps> = ({ match, homeTeam, awayTea
   // The youtubeId should be the live stream ID from CazéTV channel
   // We use the CazéTV channel live stream as fallback
   // ================================================================
+  // URL for specific video or fallback to CazéTV's general live stream URL
+  const liveSrc = (match.youtubeId && match.youtubeId !== 'v2_WswqM37A' && match.youtubeId.length === 11)
+    ? `https://www.youtube.com/embed/${match.youtubeId}?autoplay=1&mute=0&rel=0&modestbranding=1`
+    : `https://www.youtube.com/embed/live_stream?channel=UCTMFN1e3xO4_zTntmHl8DCA&autoplay=1&mute=0&rel=0&modestbranding=1`;
+
   return (
     <div className="relative aspect-video w-full rounded-2xl overflow-hidden glass-panel border border-copa-border shadow-2xl">
-      {match.youtubeId && match.youtubeId !== 'v2_WswqM37A' && match.youtubeId.length === 11 ? (
-        <iframe
-          src={`https://www.youtube.com/embed/${match.youtubeId}?autoplay=1&mute=0&rel=0&modestbranding=1`}
-          title={`CazéTV Ao Vivo: ${homeTeam?.name} vs ${awayTeam?.name}`}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          className="w-full h-full border-0"
-        />
-      ) : (
-        // Fallback: link card for live match on CazéTV
-        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950/80 gap-5 p-6 text-center">
-          <div className="flex gap-6">
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-5xl">{homeTeam?.flag}</span>
-              <span className="text-xs font-bold text-white">{homeTeam?.name}</span>
-            </div>
-            <div className="flex items-center gap-2 bg-red-600/20 border border-red-500/40 px-5 py-2 rounded-xl font-mono font-bold text-2xl text-white animate-pulse">
-              {match.homeScore ?? 0} × {match.awayScore ?? 0}
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-5xl">{awayTeam?.flag}</span>
-              <span className="text-xs font-bold text-white">{awayTeam?.name}</span>
-            </div>
-          </div>
-          <p className="text-slate-400 text-sm max-w-sm">
-            A CazéTV está transmitindo ao vivo. Clique abaixo para assistir gratuitamente no YouTube.
-          </p>
-          <a
-            href={`https://www.youtube.com/@CazeTV/live`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-full font-bold text-sm transition duration-300 flex items-center gap-2 shadow-lg"
-          >
-            <Tv size={16} />
-            Assistir ao Vivo na CazéTV
-            <ExternalLink size={14} />
-          </a>
-        </div>
-      )}
+      <iframe
+        src={liveSrc}
+        title={`CazéTV Ao Vivo: ${homeTeam?.name} vs ${awayTeam?.name}`}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+        className="w-full h-full border-0"
+      />
 
       {match.status === 'LIVE' && (
         <div className="absolute top-4 left-4 bg-red-600 border border-red-500 text-white font-bold text-xs uppercase px-2.5 py-1 rounded-md animate-pulse flex items-center gap-1.5 shadow-md pointer-events-none">
