@@ -218,9 +218,8 @@ const fetchFixtureByDate = async (match: Match): Promise<number | null> => {
   }
 
   try {
-    const url = `https://v3.football.api-sports.io/fixtures?date=${matchDate}`;
-    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
-    const res = await fetch(proxyUrl, {
+    // API-Football supports CORS natively — call directly, no proxy needed
+    const res = await fetch(`https://v3.football.api-sports.io/fixtures?date=${matchDate}`, {
       headers: { 'x-apisports-key': DEFAULT_API_FOOTBALL_KEY }
     });
     if (!res.ok) throw new Error(`API-Football date error: ${res.status}`);
@@ -674,7 +673,13 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const cacheDuration = match.status === 'FINISHED' ? Infinity
           : match.status === 'LIVE' ? 300000
           : 600000;
-        if (now - timestamp < cacheDuration) {
+        // IMPORTANT: If LIVE and cache has no events/stats, IGNORE the cache and re-fetch
+        // This handles the case where we cached empty pre-match data
+        const hasUsefulData = data && (
+          (data.events && data.events.length > 0) ||
+          (data.stats && (data.stats.possessionHome > 0 || data.stats.shotsHome > 0))
+        );
+        if (now - timestamp < cacheDuration && (match.status !== 'LIVE' || hasUsefulData)) {
           setTimeout(() => {
             setMatches(prev => prev.map(m => m.id === match.id ? { ...m, ...data } : m));
           }, 0);
@@ -707,7 +712,8 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (!lineups) {
-        const lineupsUrl = `https://corsproxy.io/?` + encodeURIComponent(`https://v3.football.api-sports.io/fixtures/lineups?fixture=${fixtureId}`);
+      // API-Football supports CORS natively — call directly without proxy
+      const lineupsUrl = `https://v3.football.api-sports.io/fixtures/lineups?fixture=${fixtureId}`;
         const lRes = await fetch(lineupsUrl, { headers });
         if (lRes.ok) {
           const lData = await lRes.json();
@@ -722,8 +728,8 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // 2. Events & Stats (in parallel)
-      const eventsUrl = `https://corsproxy.io/?` + encodeURIComponent(`https://v3.football.api-sports.io/fixtures/events?fixture=${fixtureId}`);
-      const statsUrl = `https://corsproxy.io/?` + encodeURIComponent(`https://v3.football.api-sports.io/fixtures/statistics?fixture=${fixtureId}`);
+      const eventsUrl = `https://v3.football.api-sports.io/fixtures/events?fixture=${fixtureId}`;
+      const statsUrl = `https://v3.football.api-sports.io/fixtures/statistics?fixture=${fixtureId}`;
 
       const [evRes, stRes] = await Promise.all([
         fetch(eventsUrl, { headers }),
