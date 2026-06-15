@@ -7,7 +7,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { Trophy, Tv, Key, Shield, Award, Globe, Heart, RefreshCw } from 'lucide-react';
 
 function App() {
-  const { activeTab, setActiveTab, teams, isApiMode, isLoading, lastUpdated, refreshFromApi } = useCopa();
+  const { activeTab, setActiveTab, teams, isApiMode, isLoading, isOnline, lastUpdated, refreshFromApi } = useCopa();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const groupsList = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
@@ -19,7 +19,21 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[#03060f] flex flex-col justify-between text-slate-100 font-sans">
-      
+
+      {/* Offline Banner */}
+      {!isOnline && (
+        <div className="fixed top-0 inset-x-0 z-50 bg-red-600 text-white text-center text-xs font-bold py-2 px-4 flex items-center justify-center gap-2 shadow-lg">
+          <span className="w-2 h-2 bg-white rounded-full animate-pulse"/>
+          Sem conexão com a internet — exibindo dados em cache
+        </div>
+      )}
+      {/* Loading Banner */}
+      {isLoading && (
+        <div className="fixed top-0 inset-x-0 z-50 h-0.5 bg-copa-green/20">
+          <div className="h-full bg-copa-green animate-[loadbar_1.5s_ease-in-out_infinite]" style={{width: '60%'}}/>
+        </div>
+      )}
+
       {/* Premium Navigation Header */}
       <header className="sticky top-0 z-40 bg-[#050b18]/85 backdrop-blur-md border-b border-copa-border shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -263,7 +277,7 @@ function App() {
             Desenvolvido com <Heart size={12} className="text-red-500 fill-red-500" /> para acompanhar a Copa do Mundo FIFA 2026.
           </p>
           <div className="flex items-center gap-3 justify-center text-slate-500">
-            <span>Transmissão: <strong className="text-slate-400">CazéTV (YouTube)</strong></span>
+            <span>Transmissão: <strong className="text-slate-400"><a href="https://www.youtube.com/@CazeTV/live" target="_blank" rel="noopener noreferrer" className="hover:text-copa-green transition">CazéTV ao Vivo</a></strong></span>
             <span>•</span>
             <span>Dados: <strong className="text-slate-400">football-data.org</strong></span>
           </div>

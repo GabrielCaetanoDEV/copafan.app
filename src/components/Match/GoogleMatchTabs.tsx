@@ -225,135 +225,91 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
 
         {/* Tab 3: Lineups */}
         {activeTab === 'lineups' && homeTeam && awayTeam && (
-          <div className="flex flex-col gap-8">
-            {/* Visual Football Field */}
-            <div className="relative w-full aspect-[4/5] max-w-md mx-auto rounded-3xl overflow-hidden bg-gradient-to-b from-[#14301a] to-[#07170a] border border-emerald-900/60 p-4 shadow-2xl flex flex-col justify-between">
-              
-              {/* Field Markings */}
-              <div className="absolute inset-x-0 top-0 bottom-0 pointer-events-none border border-emerald-800/40 m-2.5 rounded-2xl"></div>
-              <div className="absolute inset-x-0 top-1/2 h-[1px] bg-emerald-800/40 pointer-events-none"></div>
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-full border border-emerald-800/40 pointer-events-none"></div>
-              {/* Goal Area Top */}
-              <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-40 h-16 border-b border-x border-emerald-800/40 pointer-events-none"></div>
-              {/* Goal Area Bottom */}
-              <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 w-40 h-16 border-t border-x border-emerald-800/40 pointer-events-none"></div>
+          <div className="flex flex-col gap-6">
 
-              {/* Away Team (Top - playing down) */}
-              <div className="flex flex-col justify-between flex-1 pb-4 z-10">
-                {/* Away Goalkeeper */}
-                <div className="flex justify-center">
-                  <div className="flex flex-col items-center">
-                    <div className="w-8 h-8 rounded-full bg-copa-accent border-2 border-white flex items-center justify-center text-xs font-bold text-white shadow-md">
-                      {awayLayout.Goleiro[0]?.number}
-                    </div>
-                    <span className="text-[10px] text-white mt-1 bg-black/60 px-1.5 py-0.5 rounded truncate max-w-[80px]">
-                      {awayLayout.Goleiro[0]?.name.split(' ')[0]}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Away Defenders */}
-                <div className="flex justify-around">
-                  {awayLayout.Defensor.map((p) => (
-                    <div key={p.id} className="flex flex-col items-center">
-                      <div className="w-8 h-8 rounded-full bg-copa-accent border-2 border-white flex items-center justify-center text-xs font-bold text-white shadow-md">
-                        {p.number}
-                      </div>
-                      <span className="text-[10px] text-white mt-1 bg-black/60 px-1.5 py-0.5 rounded truncate max-w-[80px]">
-                        {p.name.split(' ').pop()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Away Midfielders */}
-                <div className="flex justify-around">
-                  {awayLayout.MeioCampista.map((p) => (
-                    <div key={p.id} className="flex flex-col items-center">
-                      <div className="w-8 h-8 rounded-full bg-copa-accent border-2 border-white flex items-center justify-center text-xs font-bold text-white shadow-md">
-                        {p.number}
-                      </div>
-                      <span className="text-[10px] text-white mt-1 bg-black/60 px-1.5 py-0.5 rounded truncate max-w-[80px]">
-                        {p.name.split(' ').pop()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Away Strikers */}
-                <div className="flex justify-around">
-                  {awayLayout.Atacante.map((p) => (
-                    <div key={p.id} className="flex flex-col items-center">
-                      <div className="w-8 h-8 rounded-full bg-copa-accent border-2 border-white flex items-center justify-center text-xs font-bold text-white shadow-md">
-                        {p.number}
-                      </div>
-                      <span className="text-[10px] text-white mt-1 bg-black/60 px-1.5 py-0.5 rounded truncate max-w-[80px]">
-                        {p.name.split(' ').pop()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+            {/* Estimated lineup badge */}
+            {!hasRealLineup && (
+              <div className="flex items-center justify-center gap-2 text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg py-2 px-3">
+                <span>⚠️</span>
+                <span className="font-semibold">Escalação estimada — dados oficiais carregados após o início da partida</span>
               </div>
+            )}
 
-              {/* Home Team (Bottom - playing up) */}
-              <div className="flex flex-col-reverse justify-between flex-1 pt-4 z-10 border-t border-emerald-800/10">
-                {/* Home Goalkeeper */}
-                <div className="flex justify-center">
-                  <div className="flex flex-col items-center">
-                    <div className="w-8 h-8 rounded-full bg-copa-green border-2 border-slate-900 flex items-center justify-center text-xs font-bold text-black shadow-md">
-                      {homeLayout.Goleiro[0]?.number}
-                    </div>
-                    <span className="text-[10px] text-white mt-1 bg-black/60 px-1.5 py-0.5 rounded truncate max-w-[80px]">
-                      {homeLayout.Goleiro[0]?.name.split(' ')[0]}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Home Defenders */}
-                <div className="flex justify-around">
-                  {homeLayout.Defensor.map((p) => (
-                    <div key={p.id} className="flex flex-col items-center">
-                      <div className="w-8 h-8 rounded-full bg-copa-green border-2 border-slate-900 flex items-center justify-center text-xs font-bold text-black shadow-md">
-                        {p.number}
-                      </div>
-                      <span className="text-[10px] text-white mt-1 bg-black/60 px-1.5 py-0.5 rounded truncate max-w-[80px]">
-                        {p.name.split(' ').pop()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Home Midfielders */}
-                <div className="flex justify-around">
-                  {homeLayout.MeioCampista.map((p) => (
-                    <div key={p.id} className="flex flex-col items-center">
-                      <div className="w-8 h-8 rounded-full bg-copa-green border-2 border-slate-900 flex items-center justify-center text-xs font-bold text-black shadow-md">
-                        {p.number}
-                      </div>
-                      <span className="text-[10px] text-white mt-1 bg-black/60 px-1.5 py-0.5 rounded truncate max-w-[80px]">
-                        {p.name.split(' ').pop()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Home Strikers */}
-                <div className="flex justify-around">
-                  {homeLayout.Atacante.map((p) => (
-                    <div key={p.id} className="flex flex-col items-center">
-                      <div className="w-8 h-8 rounded-full bg-copa-green border-2 border-slate-900 flex items-center justify-center text-xs font-bold text-black shadow-md">
-                        {p.number}
-                      </div>
-                      <span className="text-[10px] text-white mt-1 bg-black/60 px-1.5 py-0.5 rounded truncate max-w-[80px]">
-                        {p.name.split(' ').pop()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+            {/* Team + formation labels */}
+            <div className="flex justify-between text-xs text-slate-400 font-semibold px-2">
+              <div className="flex items-center gap-1.5">
+                <span>{homeTeam.flag}</span>
+                <span>{homeTeam.name}</span>
+                {hasRealLineup && <span className="text-copa-green font-mono">({match.lineups!.home.formation})</span>}
+              </div>
+              <div className="flex items-center gap-1.5 text-right">
+                {hasRealLineup && <span className="text-copa-accent font-mono">({match.lineups!.away.formation})</span>}
+                <span>{awayTeam.name}</span>
+                <span>{awayTeam.flag}</span>
               </div>
             </div>
 
-            {/* Reserves / Squad Bench list */}
+            {/* Football Field */}
+            <div className="relative w-full max-w-sm mx-auto rounded-2xl overflow-hidden shadow-2xl"
+              style={{ aspectRatio: '3/4', background: 'linear-gradient(180deg, #0a2010 0%, #0d2a14 48%, #0a2010 100%)' }}>
+
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="absolute inset-x-0 pointer-events-none"
+                  style={{ top: `${i * 12.5}%`, height: '12.5%', background: i % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent' }} />
+              ))}
+              <div className="absolute inset-2 border border-emerald-700/40 rounded-xl pointer-events-none" />
+              <div className="absolute inset-x-0 top-1/2 h-px bg-emerald-700/40 pointer-events-none" />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full border border-emerald-700/40 pointer-events-none" />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-emerald-700/60 pointer-events-none" />
+              <div className="absolute top-2 left-1/2 -translate-x-1/2 w-24 h-10 border-b border-x border-emerald-700/40 pointer-events-none" />
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-24 h-10 border-t border-x border-emerald-700/40 pointer-events-none" />
+
+              {/* Away (top): FWD, MID, DEF, GK */}
+              {[
+                { players: awayLayout.Atacante, topPct: 5, bg: '#3b82f6', bd: '#93c5fd', tc: 'white' },
+                { players: awayLayout.MeioCampista, topPct: 18, bg: '#3b82f6', bd: '#93c5fd', tc: 'white' },
+                { players: awayLayout.Defensor, topPct: 31, bg: '#3b82f6', bd: '#93c5fd', tc: 'white' },
+                { players: awayLayout.Goleiro, topPct: 42, bg: '#1e40af', bd: '#93c5fd', tc: 'white' },
+              ].map((row, ri) => row.players.length > 0 && (
+                <div key={`a${ri}`} className="absolute inset-x-3 flex justify-around" style={{ top: `${row.topPct}%` }}>
+                  {row.players.map((p: any) => (
+                    <div key={p.id} className="flex flex-col items-center" style={{ minWidth: 36 }}>
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg border-2"
+                        style={{ background: row.bg, borderColor: row.bd, color: row.tc }}>
+                        {p.number ?? '?'}
+                      </div>
+                      <span className="text-[8px] text-white mt-0.5 bg-black/70 px-1 rounded truncate max-w-[44px] text-center leading-tight">
+                        {(p.name ?? '').split(' ').pop()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+
+              {/* Home (bottom): GK, DEF, MID, FWD */}
+              {[
+                { players: homeLayout.Goleiro, topPct: 54, bg: '#10b981', bd: '#6ee7b7', tc: 'black' },
+                { players: homeLayout.Defensor, topPct: 65, bg: '#10b981', bd: '#6ee7b7', tc: 'black' },
+                { players: homeLayout.MeioCampista, topPct: 76, bg: '#10b981', bd: '#6ee7b7', tc: 'black' },
+                { players: homeLayout.Atacante, topPct: 87, bg: '#059669', bd: '#34d399', tc: 'black' },
+              ].map((row, ri) => row.players.length > 0 && (
+                <div key={`h${ri}`} className="absolute inset-x-3 flex justify-around" style={{ top: `${row.topPct}%` }}>
+                  {row.players.map((p: any) => (
+                    <div key={p.id} className="flex flex-col items-center" style={{ minWidth: 36 }}>
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg border-2"
+                        style={{ background: row.bg, borderColor: row.bd, color: row.tc }}>
+                        {p.number ?? '?'}
+                      </div>
+                      <span className="text-[8px] text-white mt-0.5 bg-black/70 px-1 rounded truncate max-w-[44px] text-center leading-tight">
+                        {(p.name ?? '').split(' ').pop()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            {/* Reserves */}
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div>
                 <h4 className="font-bold text-copa-green mb-2 flex items-center gap-1">
@@ -369,7 +325,6 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
                   ))}
                 </ul>
               </div>
-              
               <div>
                 <h4 className="font-bold text-copa-accent mb-2 flex items-center gap-1">
                   <span>{awayTeam.flag}</span> Reservas {awayTeam.name}

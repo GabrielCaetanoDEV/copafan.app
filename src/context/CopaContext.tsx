@@ -23,8 +23,8 @@ import {
   parseApiFootballLineups
 } from '../services/apiFootball';
 
-const DEFAULT_FOOTBALL_DATA_KEY = '8c0b296b4122485eb0fc9167232231ab';
-const DEFAULT_API_FOOTBALL_KEY = '11098850f9600270cf5494ac33c6ba5a';
+const DEFAULT_FOOTBALL_DATA_KEY = import.meta.env.VITE_FOOTBALL_DATA_KEY || '8c0b296b4122485eb0fc9167232231ab';
+const DEFAULT_API_FOOTBALL_KEY = import.meta.env.VITE_API_FOOTBALL_KEY || '11098850f9600270cf5494ac33c6ba5a';
 
 // ==============================================================
 // TYPES
@@ -39,6 +39,7 @@ interface CopaContextType {
   apiKey: string;
   isApiMode: boolean;
   isLoading: boolean;
+  isOnline: boolean;
   lastUpdated: Date | null;
   setApiKey: (key: string) => void;
   setSelectedMatchId: (id: string | null) => void;
@@ -162,52 +163,46 @@ class ApiRateLimiter {
 const rateLimiter = new ApiRateLimiter();
 
 // ==============================================================
-// API-Football Fixture Lookup Helpers
+// API-Football Fixture Lookup — uses /fixtures?date= (free plan compatible)
 // ==============================================================
-const fetchApiFootballFixtures = async (): Promise<any[]> => {
-  const cacheKey = 'api_football_fixtures_cache_2026';
+const fetchFixtureByDate = async (match: Match): Promise<number | null> => {
+  const matchDate = new Date(match.date).toISOString().split('T')[0];
+  const cacheKey = `api_football_fixture_${match.homeTeamId}_${match.awayTeamId}_${matchDate}`;
+  
   const cached = localStorage.getItem(cacheKey);
   if (cached) {
-    try {
-      return JSON.parse(cached);
-    } catch { /* ignore */ }
+    try { return JSON.parse(cached); } catch { /* ignore */ }
   }
 
   try {
-    const url = 'https://v3.football.api-sports.io/fixtures?league=1&season=2026';
+    const url = `https://v3.football.api-sports.io/fixtures?date=${matchDate}`;
     const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
     const res = await fetch(proxyUrl, {
-      headers: {
-        'x-apisports-key': DEFAULT_API_FOOTBALL_KEY
-      }
+      headers: { 'x-apisports-key': DEFAULT_API_FOOTBALL_KEY }
     });
-    if (!res.ok) throw new Error(`API-Football fixtures error: ${res.status}`);
+    if (!res.ok) throw new Error(`API-Football date error: ${res.status}`);
     const data = await res.json();
-    if (data.response && data.response.length > 0) {
-      localStorage.setItem(cacheKey, JSON.stringify(data.response));
-      return data.response;
+    if (!data.response || data.response.length === 0) return null;
+
+    // Find WC fixture by matching team names
+    const fixture = data.response.find((f: any) => {
+      const fHomeTla = mapTeamNameToTla(f.teams.home.name);
+      const fAwayTla = mapTeamNameToTla(f.teams.away.name);
+      return (
+        (fHomeTla === match.homeTeamId && fAwayTla === match.awayTeamId) ||
+        (fHomeTla === match.awayTeamId && fAwayTla === match.homeTeamId)
+      );
+    });
+
+    if (fixture) {
+      const fixtureId = fixture.fixture.id;
+      localStorage.setItem(cacheKey, JSON.stringify(fixtureId));
+      return fixtureId;
     }
   } catch (err) {
-    console.error('Failed to fetch API-Football fixtures list:', err);
+    console.error('Failed to find fixture by date:', err);
   }
-  return [];
-};
-
-const findFixtureId = (fixtures: any[], homeTla: string, awayTla: string): number | null => {
-  const match = fixtures.find(f => {
-    const fHomeTla = mapTeamNameToTla(f.teams.home.name);
-    const fAwayTla = mapTeamNameToTla(f.teams.away.name);
-    return (fHomeTla === homeTla && fAwayTla === awayTla) || 
-           (fHomeTla === awayTla && fAwayTla === homeTla);
-  });
-  return match ? match.fixture.id : null;
-};
-
-const getFixtureIdForMatch = (fixtures: any[], match: Match): number | null => {
-  if (fixtures.length === 0) return null;
-  const exact = findFixtureId(fixtures, match.homeTeamId, match.awayTeamId);
-  // Only return exact match — do not fall back to a wrong 2022 fixture
-  return exact;
+  return null;
 };
 
 // ==============================================================
@@ -223,8 +218,21 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [apiKey, setApiKeyInternal] = useState<string>(() => localStorage.getItem('copa_api_key') || DEFAULT_FOOTBALL_DATA_KEY);
   const [isApiMode, setIsApiMode] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const teamsRef = useRef<Team[]>(INITIAL_TEAMS);
+
+  // Online/offline detection
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Keep ref in sync for simulation engine
   useEffect(() => { teamsRef.current = teamsState; }, [teamsState]);
@@ -327,8 +335,6 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const extractedTeams = Array.from(extractedTeamsMap.values());
 
     // 2. Map API matches to our internal structure
-    const nowMs = Date.now();
-
     const mappedMatches: Match[] = apiMatches.map((apiMatch: any, idx: number) => {
       const apiHomeScore = apiMatch.score?.fullTime?.home;
       const apiAwayScore = apiMatch.score?.fullTime?.away;
@@ -338,22 +344,29 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
       else if (['IN_PLAY', 'PAUSED', 'HALFTIME'].includes(apiMatch.status)) apiStatus = 'LIVE';
 
       const matchTimeMs = new Date(apiMatch.utcDate).getTime();
-      
-      // Fallback for API delay: If time passed, force LIVE or FINISHED locally
+      const nowMs2 = Date.now();
+
+      // Only apply local time fallback if API still says SCHEDULED but time has passed
       if (apiStatus === 'SCHEDULED') {
-        if (nowMs >= matchTimeMs && nowMs < matchTimeMs + 110 * 60000) {
+        if (nowMs2 >= matchTimeMs && nowMs2 < matchTimeMs + 115 * 60000) {
           apiStatus = 'LIVE';
-        } else if (nowMs >= matchTimeMs + 110 * 60000) {
+        } else if (nowMs2 >= matchTimeMs + 115 * 60000) {
           apiStatus = 'FINISHED';
         }
       }
 
-      let currentMinute = 0;
+      // Correct minute calculation:
+      // - HALFTIME: freeze at 45'
+      // - PAUSED/2nd half: offset correctly
+      let currentMinute: number | undefined;
       if (apiStatus === 'LIVE') {
-        currentMinute = Math.min(Math.floor((nowMs - matchTimeMs) / 60000), 90);
-        if (currentMinute < 1) currentMinute = 1;
+        if (apiMatch.status === 'HALFTIME') {
+          currentMinute = 45;
+        } else {
+          currentMinute = Math.min(Math.max(1, Math.floor((nowMs2 - matchTimeMs) / 60000)), 90);
+        }
       } else if (apiStatus === 'FINISHED') {
-        currentMinute = 90;
+        currentMinute = undefined; // don't show minute for finished
       }
 
       const homeScore = apiHomeScore ?? (apiStatus !== 'SCHEDULED' ? 0 : null);
@@ -392,7 +405,7 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
         youtubeId: 'v2_WswqM37A',
         events,
         stats,
-        minute: apiStatus === 'LIVE' ? currentMinute : undefined,
+        minute: currentMinute,
       };
     });
 
@@ -538,8 +551,9 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         } catch { /* ignore */ }
       }
-      alert('Erro ao carregar dados da API. Voltando ao Modo Simulação Offline. Verifique sua chave e tente novamente.');
-      setIsApiMode(false);
+      alert('Erro ao carregar dados da API. Verifique sua chave e tente novamente.');
+      // Don't switch to offline if we have cache
+      if (!localStorage.getItem(cacheKey)) setIsApiMode(false);
     } finally {
       setIsLoading(false);
     }
@@ -606,9 +620,12 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const fixtures = await fetchApiFootballFixtures();
-      const fixtureId = getFixtureIdForMatch(fixtures, match);
-      if (!fixtureId) return;
+      // Use date-based fixture lookup (works on API-Football free plan)
+      const fixtureId = await fetchFixtureByDate(match);
+      if (!fixtureId) {
+        console.log(`No fixture found for match ${match.id} (${match.homeTeamId} vs ${match.awayTeamId})`);
+        return;
+      }
 
       const headers = {
         'x-apisports-key': DEFAULT_API_FOOTBALL_KEY
@@ -752,6 +769,7 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
       apiKey,
       isApiMode,
       isLoading,
+      isOnline,
       lastUpdated,
       setApiKey,
       setSelectedMatchId,
