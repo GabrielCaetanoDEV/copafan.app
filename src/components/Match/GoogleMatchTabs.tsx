@@ -165,56 +165,114 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
         {activeTab === 'timeline' && (
           <div className="space-y-4 relative before:absolute before:top-2 before:bottom-2 before:left-[19px] before:w-[2px] before:bg-slate-800">
             {match.events.length === 0 ? (
-              <div className="text-center py-10 text-slate-500 text-sm flex flex-col items-center gap-3">
-                <Clock size={32} className="text-slate-700" />
-                {match.status === 'SCHEDULED' && !isNearKickoff && <p>Partida ainda não iniciada. O lance a lance começará junto com o apito inicial.</p>}
-                {match.status === 'SCHEDULED' && isNearKickoff && <p>Partida prestes a começar! Lance a lance disponível ao apito inicial. <span className="block text-xs text-slate-600 mt-1">Atualizando a cada 5 minutos.</span></p>}
-                {match.status === 'FINISHED' && <p>Lance a lance não disponível para esta partida.<br/><span className="text-xs text-slate-600">Os dados de eventos são carregados via API ao selecionar uma partida encerrada recente.</span></p>}
-                {match.status === 'LIVE' && <p className="animate-pulse">⏳ Carregando lance a lance em tempo real...</p>}
+              <div className="text-center py-8 text-slate-500 text-sm flex flex-col items-center gap-4">
+                {match.status === 'SCHEDULED' && !isNearKickoff && (
+                  <>
+                    <Clock size={32} className="text-slate-700" />
+                    <p>Partida ainda não iniciada. O lance a lance começará junto com o apito inicial.</p>
+                  </>
+                )}
+                {match.status === 'SCHEDULED' && isNearKickoff && (
+                  <>
+                    <Clock size={32} className="text-slate-700 animate-pulse" />
+                    <p>Partida prestes a começar!<span className="block text-xs text-slate-600 mt-1">Atualizando a cada 5 minutos.</span></p>
+                  </>
+                )}
+                {match.status === 'FINISHED' && (
+                  <>
+                    <Clock size={32} className="text-slate-700" />
+                    <p>Nenhum evento registrado para esta partida.</p>
+                  </>
+                )}
+                {match.status === 'LIVE' && (
+                  <>
+                    {/* Live score display */}
+                    <div className="flex items-center gap-4 bg-slate-900/60 border border-slate-800 rounded-2xl px-8 py-4">
+                      <div className="text-center">
+                        <div className="text-lg">{homeTeam?.flag}</div>
+                        <div className="text-xs text-slate-400 mt-1">{homeTeam?.name}</div>
+                      </div>
+                      <div className="text-2xl font-black font-mono text-white tabular-nums">
+                        {match.homeScore ?? 0} — {match.awayScore ?? 0}
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg">{awayTeam?.flag}</div>
+                        <div className="text-xs text-slate-400 mt-1">{awayTeam?.name}</div>
+                      </div>
+                    </div>
+                    {/* Monitoring indicator */}
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <span className="w-2 h-2 rounded-full bg-copa-green animate-pulse shadow-[0_0_6px_theme(colors.copa-green)]"/>
+                      <span>Monitorando em tempo real</span>
+                    </div>
+                    <p className="text-xs text-slate-600 max-w-xs leading-relaxed text-center">
+                      Nenhum evento registrado ainda.<br/>
+                      <span className="text-slate-700">Gols, cartões e substituições aparecerão aqui assim que acontecerem.</span>
+                    </p>
+                  </>
+                )}
               </div>
             ) : (
               match.events.map((event) => {
                 let icon = <Clock size={16} className="text-slate-400" />;
                 let iconBg = 'bg-slate-900 border-slate-700';
+                let cardBorder = 'border-copa-border';
 
                 if (event.type === 'goal') {
-                  icon = <span className="font-bold text-xs text-black">⚽</span>;
-                  iconBg = 'bg-copa-green border-copa-green glow-green';
+                  icon = <span className="text-base">⚽</span>;
+                  iconBg = 'bg-emerald-500/20 border-emerald-500';
+                  cardBorder = 'border-emerald-500/30';
                 } else if (event.type === 'yellow_card') {
-                  icon = <div className="w-2.5 h-3.5 bg-yellow-400 rounded-sm"></div>;
-                  iconBg = 'bg-slate-950 border-yellow-500/50';
+                  icon = <div className="w-3 h-4 bg-yellow-400 rounded-sm shadow-sm"/>;
+                  iconBg = 'bg-yellow-500/10 border-yellow-500/60';
+                  cardBorder = 'border-yellow-500/20';
                 } else if (event.type === 'red_card') {
-                  icon = <div className="w-2.5 h-3.5 bg-red-650 bg-red-600 rounded-sm"></div>;
-                  iconBg = 'bg-slate-950 border-red-500/50';
+                  icon = <div className="w-3 h-4 bg-red-600 rounded-sm shadow-sm"/>;
+                  iconBg = 'bg-red-500/10 border-red-500/60';
+                  cardBorder = 'border-red-500/20';
                 } else if (event.type === 'substitution') {
-                  icon = <ArrowLeftRight size={12} className="text-emerald-400" />;
-                  iconBg = 'bg-slate-950 border-slate-700';
+                  icon = <ArrowLeftRight size={12} className="text-blue-400" />;
+                  iconBg = 'bg-blue-500/10 border-blue-500/40';
                 }
 
-                let eventTeam = undefined;
-                if (event.teamId) {
-                  eventTeam = event.teamId.toLowerCase() === match.homeTeamId.toLowerCase() ? homeTeam : awayTeam;
-                }
+                const isHomeEvent = event.teamId?.toLowerCase() === match.homeTeamId.toLowerCase();
+                const eventTeam = event.teamId ? (isHomeEvent ? homeTeam : awayTeam) : undefined;
 
                 return (
-                  <div key={event.id} className="flex gap-4 items-start relative group transition duration-300">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 z-10 shrink-0 ${iconBg}`}>
+                  <div key={event.id} className="flex gap-3 items-start relative group transition duration-300">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 z-10 shrink-0 mt-1 ${iconBg}`}>
                       {icon}
                     </div>
-                    
-                    <div className="flex-1 bg-slate-950/45 hover:bg-slate-950/80 border border-copa-border p-3.5 rounded-xl transition duration-300">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs font-bold font-mono text-glow-green text-copa-green bg-copa-green/5 px-2 py-0.5 rounded-md border border-copa-green/10">
-                          {event.minute}'
-                        </span>
+
+                    <div className={`flex-1 bg-slate-950/50 hover:bg-slate-950/80 border ${cardBorder} p-3 rounded-xl transition duration-300`}>
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                          {/* Minute + type label */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black font-mono text-copa-green bg-copa-green/10 px-1.5 py-0.5 rounded border border-copa-green/20">
+                              {event.minute}'
+                            </span>
+                            <span className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">
+                              {event.type === 'goal' ? 'Gol' :
+                               event.type === 'yellow_card' ? 'Cartão Amarelo' :
+                               event.type === 'red_card' ? 'Cartão Vermelho' :
+                               event.type === 'substitution' ? 'Substituição' : event.type}
+                            </span>
+                          </div>
+                          {/* Player name */}
+                          {event.playerName && (
+                            <span className="text-sm font-bold text-white truncate">{event.playerName}</span>
+                          )}
+                          {/* Description */}
+                          <p className="text-xs text-slate-400 leading-relaxed mt-0.5">{event.detail}</p>
+                        </div>
+                        {/* Team badge */}
                         {eventTeam && (
-                          <span className="text-[10px] sm:text-xs text-slate-400 font-semibold flex items-center gap-1">
-                            <span>{eventTeam.flag}</span>
-                            <span>{eventTeam.name}</span>
+                          <span className="text-[10px] text-slate-400 font-semibold flex items-center gap-1 shrink-0">
+                            <span className="text-base leading-none">{eventTeam.flag}</span>
                           </span>
                         )}
                       </div>
-                      <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans">{event.detail}</p>
                     </div>
                   </div>
                 );
