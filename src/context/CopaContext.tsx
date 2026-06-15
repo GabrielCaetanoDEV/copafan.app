@@ -517,39 +517,77 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const extractedTeams = Array.from(extractedTeamsMap.values());
 
     // 2. Map API matches to our internal structure
+    const nowMs = Date.now();
+
     const mappedMatches: Match[] = apiMatches.map((apiMatch: any, idx: number) => {
-      const homeScore = apiMatch.score?.fullTime?.home ?? null;
-      const awayScore = apiMatch.score?.fullTime?.away ?? null;
+      const apiHomeScore = apiMatch.score?.fullTime?.home;
+      const apiAwayScore = apiMatch.score?.fullTime?.away;
 
       let apiStatus: 'SCHEDULED' | 'LIVE' | 'FINISHED' = 'SCHEDULED';
       if (apiMatch.status === 'FINISHED') apiStatus = 'FINISHED';
       else if (['IN_PLAY', 'PAUSED', 'HALFTIME'].includes(apiMatch.status)) apiStatus = 'LIVE';
 
-      const stadiumId = STADIUMS[idx % STADIUMS.length].id;
+      const matchTimeMs = new Date(apiMatch.utcDate).getTime();
+      
+      // Fallback for API delay: If time passed, force LIVE or FINISHED locally
+      if (apiStatus === 'SCHEDULED') {
+        if (nowMs >= matchTimeMs && nowMs < matchTimeMs + 110 * 60000) {
+          apiStatus = 'LIVE';
+        } else if (nowMs >= matchTimeMs + 110 * 60000) {
+          apiStatus = 'FINISHED';
+        }
+      }
 
+      let currentMinute = 0;
+      if (apiStatus === 'LIVE') {
+        currentMinute = Math.min(Math.floor((nowMs - matchTimeMs) / 60000), 90);
+        if (currentMinute < 1) currentMinute = 1;
+      } else if (apiStatus === 'FINISHED') {
+        currentMinute = 90;
+      }
+
+      const homeScore = apiHomeScore ?? (apiStatus !== 'SCHEDULED' ? 0 : null);
+      const awayScore = apiAwayScore ?? (apiStatus !== 'SCHEDULED' ? 0 : null);
+
+      const stadiumId = STADIUMS[idx % STADIUMS.length].id;
       const homeTla = apiMatch.homeTeam?.tla || null;
       const awayTla = apiMatch.awayTeam?.tla || null;
 
-      // Generate rich events for finished matches
-      const events: MatchEvent[] = generateRichMatchEvents(
-        `M_API_${apiMatch.id}`,
-        homeTla || 'HOME',
-        awayTla || 'AWAY',
-        homeScore ?? 0,
-        awayScore ?? 0,
-        apiStatus
-      );
+      // Generate rich events for live/finished matches deterministically
+      let events: MatchEvent[] = [];
+      if (apiStatus !== 'SCHEDULED') {
+        events = generateRichMatchEvents(
+          `M_API_${apiMatch.id}`,
+          homeTla || 'HOME',
+          awayTla || 'AWAY',
+          homeScore || 0,
+          awayScore || 0,
+          apiStatus
+        ).filter(e => e.minute <= currentMinute);
+      }
+
+      // Generate realistic stats based on score and time
+      const isComplete = apiStatus === 'FINISHED';
+      const statsMultiplier = currentMinute / 90;
+      const basePossession = 40 + (Math.abs((idx * 7) % 20)); // Deterministic pseudo-random 40-60
+      
       const stats: MatchStats = {
-        possessionHome: 50, possessionAway: 50,
-        shotsHome: homeScore !== null ? Math.max(homeScore * 4, 5) : 0,
-        shotsAway: awayScore !== null ? Math.max(awayScore * 4, 5) : 0,
-        shotsOnTargetHome: homeScore !== null ? Math.max(homeScore * 2, 2) : 0,
-        shotsOnTargetAway: awayScore !== null ? Math.max(awayScore * 2, 2) : 0,
-        foulsHome: 10, foulsAway: 10,
-        cornersHome: 4, cornersAway: 4,
-        yellowHome: 1, yellowAway: 1,
-        redHome: 0, redAway: 0,
-        offsidesHome: 1, offsidesAway: 1,
+        possessionHome: basePossession,
+        possessionAway: 100 - basePossession,
+        shotsHome: Math.floor(((homeScore || 0) * 3 + 4 + (idx % 4)) * statsMultiplier),
+        shotsAway: Math.floor(((awayScore || 0) * 3 + 3 + (idx % 3)) * statsMultiplier),
+        shotsOnTargetHome: Math.floor(((homeScore || 0) * 1.5 + 2) * statsMultiplier),
+        shotsOnTargetAway: Math.floor(((awayScore || 0) * 1.5 + 1) * statsMultiplier),
+        foulsHome: Math.floor((8 + (idx % 5)) * statsMultiplier),
+        foulsAway: Math.floor((9 + (idx % 4)) * statsMultiplier),
+        cornersHome: Math.floor((3 + (idx % 3)) * statsMultiplier),
+        cornersAway: Math.floor((2 + (idx % 4)) * statsMultiplier),
+        yellowHome: Math.floor((1 + (idx % 2)) * statsMultiplier),
+        yellowAway: Math.floor((idx % 3) * statsMultiplier),
+        redHome: 0,
+        redAway: 0,
+        offsidesHome: Math.floor((1 + (idx % 2)) * statsMultiplier),
+        offsidesAway: Math.floor((1 + (idx % 3)) * statsMultiplier),
       };
 
       return {
@@ -566,7 +604,7 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
         youtubeId: 'v2_WswqM37A',
         events,
         stats,
-        minute: apiStatus === 'LIVE' ? undefined : undefined,
+        minute: apiStatus === 'LIVE' ? currentMinute : undefined,
       };
     });
 
