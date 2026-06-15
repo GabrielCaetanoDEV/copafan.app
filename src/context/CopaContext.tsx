@@ -13,7 +13,6 @@ import {
   MatchEvent,
   generateSquad,
 } from '../data/copaData';
-import { simulateMatchTick } from '../services/simulationEngine';
 
 // ==============================================================
 // TYPES
@@ -34,7 +33,6 @@ interface CopaContextType {
   setSelectedTeamId: (id: string | null) => void;
   setActiveTab: (tab: 'matches' | 'standings' | 'bracket' | 'teams') => void;
   updateMatchScore: (matchId: string, homeScore: number, awayScore: number, status: 'FINISHED' | 'LIVE' | 'SCHEDULED') => void;
-  triggerNextSimulationTick: () => void;
   refreshFromApi: () => void;
 }
 
@@ -122,25 +120,6 @@ const TEAM_TRANSLATIONS: Record<string, { name: string; flag: string }> = {
 };
 
 // ==============================================================
-// Rich match event generator for finished API matches
-// ==============================================================
-function generateRichMatchEvents(
-  matchId: string,
-  homeTla: string,
-  awayTla: string,
-  homeScore: number,
-  awayScore: number,
-  status: string
-): MatchEvent[] {
-  if (status === 'SCHEDULED') return [];
-
-  const events: MatchEvent[] = [];
-  const totalGoals = homeScore + awayScore;
-
-  // ---- Goal minutes (realistic distribution) ----
-  const usedMinutes = new Set<number>();
-  function randMin(min: number, max: number): number {
-    let m = Math.floor(Math.random() * (max - min + 1)) + min;
     while (usedMinutes.has(m)) m = m === max ? min : m + 1;
     usedMinutes.add(m);
     return m;
@@ -379,17 +358,6 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [matches, isApiMode]);
 
   // ==============================================================
-  // Live match simulation (offline mode only)
-  // ==============================================================
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (isApiMode) return;
-      setMatches(prev => prev.map(m => m.status === 'LIVE' ? simulateMatchTick(m, teamsRef.current) : m));
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [isApiMode]);
-
-  // ==============================================================
   // API fetch with caching and rate limiting
   // ==============================================================
   const fetchRealDataFromApi = useCallback(async (key: string) => {
@@ -553,40 +521,19 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const homeTla = apiMatch.homeTeam?.tla || null;
       const awayTla = apiMatch.awayTeam?.tla || null;
 
-      // Generate rich events for live/finished matches deterministically
-      let events: MatchEvent[] = [];
-      if (apiStatus !== 'SCHEDULED') {
-        events = generateRichMatchEvents(
-          `M_API_${apiMatch.id}`,
-          homeTla || 'HOME',
-          awayTla || 'AWAY',
-          homeScore || 0,
-          awayScore || 0,
-          apiStatus
-        ).filter(e => e.minute <= currentMinute);
-      }
-
-      // Generate realistic stats based on score and time
-      const statsMultiplier = currentMinute / 90;
-      const basePossession = 40 + (Math.abs((idx * 7) % 20)); // Deterministic pseudo-random 40-60
+      // Without an external provider like API-Football or TheSports, we leave events empty.
+      const events: MatchEvent[] = [];
       
+      // Empty stats until a real API is integrated
       const stats: MatchStats = {
-        possessionHome: basePossession,
-        possessionAway: 100 - basePossession,
-        shotsHome: Math.floor(((homeScore || 0) * 3 + 4 + (idx % 4)) * statsMultiplier),
-        shotsAway: Math.floor(((awayScore || 0) * 3 + 3 + (idx % 3)) * statsMultiplier),
-        shotsOnTargetHome: Math.floor(((homeScore || 0) * 1.5 + 2) * statsMultiplier),
-        shotsOnTargetAway: Math.floor(((awayScore || 0) * 1.5 + 1) * statsMultiplier),
-        foulsHome: Math.floor((8 + (idx % 5)) * statsMultiplier),
-        foulsAway: Math.floor((9 + (idx % 4)) * statsMultiplier),
-        cornersHome: Math.floor((3 + (idx % 3)) * statsMultiplier),
-        cornersAway: Math.floor((2 + (idx % 4)) * statsMultiplier),
-        yellowHome: Math.floor((1 + (idx % 2)) * statsMultiplier),
-        yellowAway: Math.floor((idx % 3) * statsMultiplier),
-        redHome: 0,
-        redAway: 0,
-        offsidesHome: Math.floor((1 + (idx % 2)) * statsMultiplier),
-        offsidesAway: Math.floor((1 + (idx % 3)) * statsMultiplier),
+        possessionHome: 0, possessionAway: 0,
+        shotsHome: 0, shotsAway: 0,
+        shotsOnTargetHome: 0, shotsOnTargetAway: 0,
+        foulsHome: 0, foulsAway: 0,
+        cornersHome: 0, cornersAway: 0,
+        yellowHome: 0, yellowAway: 0,
+        redHome: 0, redAway: 0,
+        offsidesHome: 0, offsidesAway: 0,
       };
 
       return {

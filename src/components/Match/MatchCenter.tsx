@@ -214,16 +214,7 @@ export const MatchCenter: React.FC = () => {
                 <Tv className="text-copa-green" size={20} />
                 Central da Partida
               </h2>
-              {selectedMatch.status === 'LIVE' && (
-                <button
-                  onClick={triggerNextSimulationTick}
-                  title="Simular lance instantaneamente"
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition duration-200 active:scale-95"
-                >
-                  <RefreshCw size={12} className="animate-spin-slow" />
-                  Acelerar Simulação
-                </button>
-              )}
+
             </div>
 
             <LivePlayer 
