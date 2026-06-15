@@ -600,7 +600,14 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ==============================================================
   const fetchLiveMatchDetails = useCallback(async (match: Match) => {
     if (!match) return;
-    if (match.status === 'SCHEDULED') return;
+    
+    // For SCHEDULED matches, only try to fetch if the match starts within 2 hours
+    // (Teams submit lineups 1 hour before kickoff, API-Football usually has them)
+    if (match.status === 'SCHEDULED') {
+      const matchStartMs = new Date(match.date).getTime();
+      const twoHoursMs = 2 * 60 * 60 * 1000;
+      if (Date.now() < matchStartMs - twoHoursMs) return; // too far in future
+    }
 
     const cacheKey = `copa_match_details_v2_${match.id}`;
     const cachedData = localStorage.getItem(cacheKey);
@@ -609,7 +616,10 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (cachedData) {
       try {
         const { timestamp, data } = JSON.parse(cachedData);
-        const cacheDuration = match.status === 'FINISHED' ? Infinity : 300000; // 5 minutes for LIVE
+        // Finished = cache forever; Live = 5min; Scheduled (near kickoff) = 10min
+        const cacheDuration = match.status === 'FINISHED' ? Infinity
+          : match.status === 'LIVE' ? 300000
+          : 600000;
         if (now - timestamp < cacheDuration) {
           setTimeout(() => {
             setMatches(prev => prev.map(m => m.id === match.id ? { ...m, ...data } : m));
@@ -701,32 +711,36 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Polling details for the selected match if it is LIVE
+  // Polling details for the selected match (LIVE every 5min, near-kickoff SCHEDULED every 10min)
   const selectedMatch = matches.find(m => m.id === selectedMatchId);
   const selectedMatchStatus = selectedMatch?.status;
+  const selectedMatchDate = selectedMatch?.date;
 
   useEffect(() => {
     if (!selectedMatchId || !isApiMode) return;
     const match = matches.find(m => m.id === selectedMatchId);
     if (!match) return;
 
-    setTimeout(() => {
-      fetchLiveMatchDetails(match);
-    }, 0);
+    // Determine if this SCHEDULED match is within 2h of kickoff
+    const isNearKickoff = match.status === 'SCHEDULED' &&
+      Date.now() >= new Date(match.date).getTime() - 2 * 60 * 60 * 1000;
 
-    if (selectedMatchStatus === 'LIVE') {
+    // Initial fetch
+    setTimeout(() => { fetchLiveMatchDetails(match); }, 0);
+
+    // Poll LIVE every 5 min, near-kickoff SCHEDULED every 10 min
+    if (selectedMatchStatus === 'LIVE' || isNearKickoff) {
+      const intervalMs = selectedMatchStatus === 'LIVE' ? 300000 : 600000;
       const interval = setInterval(() => {
         setMatches(prev => {
           const freshMatch = prev.find(m => m.id === selectedMatchId);
-          if (freshMatch && freshMatch.status === 'LIVE') {
-            fetchLiveMatchDetails(freshMatch);
-          }
+          if (freshMatch) fetchLiveMatchDetails(freshMatch);
           return prev;
         });
-      }, 300000); // 5 minutes
+      }, intervalMs);
       return () => clearInterval(interval);
     }
-  }, [selectedMatchId, selectedMatchStatus, isApiMode, fetchLiveMatchDetails]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedMatchId, selectedMatchStatus, selectedMatchDate, isApiMode, fetchLiveMatchDetails]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ==============================================================
   // Auto-refresh in API mode: every 10 minutes (600,000 ms)
