@@ -3,15 +3,14 @@ import { useCopa } from '../../context/CopaContext';
 import { STADIUMS, Match } from '../../data/copaData';
 import { LivePlayer } from './LivePlayer';
 import { GoogleMatchTabs } from './GoogleMatchTabs';
-import { Search, Tv, Award, Calendar, RefreshCw } from 'lucide-react';
+import { Search, Tv, Award, Calendar } from 'lucide-react';
 
 export const MatchCenter: React.FC = () => {
   const { 
     matches, 
     teams, 
     selectedMatchId, 
-    setSelectedMatchId,
-    triggerNextSimulationTick
+    setSelectedMatchId
   } = useCopa();
 
   const [searchTerm, setSearchTerm] = useState('');

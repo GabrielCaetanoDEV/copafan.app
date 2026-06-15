@@ -10,8 +10,7 @@ import {
   generateKnockoutBracket,
   STADIUMS,
   MatchStats,
-  MatchEvent,
-  generateSquad,
+  MatchEvent
 } from '../data/copaData';
 
 // ==============================================================
@@ -539,10 +538,6 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   };
 
-  const triggerNextSimulationTick = () => {
-    setMatches(prev => prev.map(m => m.status === 'LIVE' ? simulateMatchTick(m, teamsRef.current) : m));
-  };
-
   return (
     <CopaContext.Provider value={{
       teams: teamsState,
@@ -560,7 +555,6 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSelectedTeamId,
       setActiveTab,
       updateMatchScore,
-      triggerNextSimulationTick,
       refreshFromApi,
     }}>
       {children}
