@@ -80,6 +80,7 @@ export interface Match {
   stadiumId: string;
   youtubeId: string;
   minute?: number;
+  isHalftime?: boolean; // true when API reports HT status
   events: MatchEvent[];
   stats: MatchStats;
   lineups?: {

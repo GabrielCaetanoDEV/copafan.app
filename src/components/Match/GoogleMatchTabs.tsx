@@ -18,47 +18,83 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'timeline' | 'stats' | 'lineups' | 'group'>('timeline');
 
-  const hasRealLineup = match.lineups && match.lineups.home && match.lineups.away;
+  const hasRealLineup = match.lineups && match.lineups.home && match.lineups.away &&
+    match.lineups.home.titulares.length > 0;
 
   // Is this match too far in the future to have any data?
   const matchStartMs = new Date(match.date).getTime();
   const isFarFuture = match.status === 'SCHEDULED' && matchStartMs > Date.now() + 24 * 60 * 60 * 1000;
   const isNearKickoff = match.status === 'SCHEDULED' && matchStartMs <= Date.now() + 2 * 60 * 60 * 1000;
 
-  // Build a proper 1-4-3-3 fallback lineup from the generated squad
+  // Apply substitution events to get the CURRENT lineup (who is actually on the pitch)
+  const applySubstitutions = (titulares: any[], teamId: string) => {
+    const subs = match.events.filter(e =>
+      e.type === 'substitution' &&
+      e.teamId?.toLowerCase() === teamId.toLowerCase()
+    );
+    if (!subs.length) return titulares;
+
+    let current = [...titulares];
+    for (const sub of subs) {
+      // playerName = who came OUT, detail contains who came IN
+      // The detail format: "Substituição: entra X e sai Y"
+      const inMatch = match.lineups?.home?.reservas?.find(p =>
+        sub.detail?.includes(p.name.split(' ')[0])
+      ) || match.lineups?.away?.reservas?.find(p =>
+        sub.detail?.includes(p.name.split(' ')[0])
+      );
+      // Remove the player who went out
+      if (sub.playerName) {
+        current = current.filter(p =>
+          !p.name.toLowerCase().includes(sub.playerName!.split(' ').pop()!.toLowerCase())
+        );
+      }
+      // Add the player who came in (use same position as the one who went out)
+      if (inMatch && !current.find(p => p.id === inMatch.id)) {
+        current.push({ ...inMatch, isSubstitute: true });
+      }
+    }
+    return current;
+  };
+
+  // Build a proper 4-3-3 fallback lineup from the generated squad
   const buildFallbackLayout = (squad: ReturnType<typeof generateSquad>) => {
-    // squad is sorted: [Goleiros x3, Defensores x7, Meios x7, Atacantes x6]
     const gk = squad.filter(p => p.position === 'Goleiro').slice(0, 1);
     const def = squad.filter(p => p.position === 'Defensor').slice(0, 4);
     const mid = squad.filter(p => p.position === 'Meio-campista').slice(0, 3);
     const fwd = squad.filter(p => p.position === 'Atacante').slice(0, 3);
-    return {
-      Goleiro: gk,
-      Defensor: def,
-      MeioCampista: mid,
-      Atacante: fwd,
-    };
+    return { Goleiro: gk, Defensor: def, MeioCampista: mid, Atacante: fwd };
   };
 
   // Group players by position for field layout
-  const getPlayersByPosition = (players: any[]) => {
-    return {
-      Goleiro: players.filter((p: any) => p.position === 'Goleiro').slice(0, 1),
-      Defensor: players.filter((p: any) => p.position === 'Defensor'),
-      MeioCampista: players.filter((p: any) => p.position === 'Meio-campista'),
-      Atacante: players.filter((p: any) => p.position === 'Atacante')
-    };
-  };
+  const getPlayersByPosition = (players: any[]) => ({
+    Goleiro: players.filter((p: any) => p.position === 'Goleiro').slice(0, 1),
+    Defensor: players.filter((p: any) => p.position === 'Defensor'),
+    MeioCampista: players.filter((p: any) => p.position === 'Meio-campista'),
+    Atacante: players.filter((p: any) => p.position === 'Atacante'),
+  });
 
   const hSquad = homeTeam ? generateSquad(homeTeam.id) : [];
   const aSquad = awayTeam ? generateSquad(awayTeam.id) : [];
 
+  // Use real lineup if available, with substitutions applied for in-progress matches
+  const homeTitulares = hasRealLineup
+    ? applySubstitutions(match.lineups!.home.titulares, match.homeTeamId)
+    : hSquad;
+  const awayTitulares = hasRealLineup
+    ? applySubstitutions(match.lineups!.away.titulares, match.awayTeamId)
+    : aSquad;
+
   const homeLayout = hasRealLineup
-    ? getPlayersByPosition(match.lineups!.home.titulares)
+    ? getPlayersByPosition(homeTitulares)
     : buildFallbackLayout(hSquad);
   const awayLayout = hasRealLineup
-    ? getPlayersByPosition(match.lineups!.away.titulares)
+    ? getPlayersByPosition(awayTitulares)
     : buildFallbackLayout(aSquad);
+
+  // Count substitutions by team for display
+  const homeSubCount = match.events.filter(e => e.type === 'substitution' && e.teamId?.toLowerCase() === match.homeTeamId.toLowerCase()).length;
+  const awaySubCount = match.events.filter(e => e.type === 'substitution' && e.teamId?.toLowerCase() === match.awayTeamId.toLowerCase()).length;
 
   // Helper to render stats bars
   const renderStatBar = (label: string, homeValue: number, awayValue: number) => {
@@ -310,6 +346,20 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
         {activeTab === 'lineups' && homeTeam && awayTeam && (
           <div className="flex flex-col gap-6">
 
+            {/* Status/time banner */}
+            {match.status === 'LIVE' && (
+              <div className={`flex items-center justify-center gap-2 text-xs font-bold rounded-lg py-2 px-3 ${
+                match.isHalftime
+                  ? 'text-yellow-300 bg-yellow-500/10 border border-yellow-500/20'
+                  : 'text-copa-green bg-copa-green/10 border border-copa-green/20'
+              }`}>
+                <span className="w-2 h-2 rounded-full bg-current animate-pulse"/>
+                {match.isHalftime
+                  ? '⏸ Intervalo — Escalação pode ser alterada no segundo tempo'
+                  : `▶ ${match.minute ?? '?'}' — Escalação atualizada com substituições`}
+              </div>
+            )}
+
             {/* Estimated lineup badge */}
             {!hasRealLineup && (
               <div className="flex items-center justify-center gap-2 text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg py-2 px-3">
@@ -324,8 +374,10 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
                 <span>{homeTeam.flag}</span>
                 <span>{homeTeam.name}</span>
                 {hasRealLineup && <span className="text-copa-green font-mono">({match.lineups!.home.formation})</span>}
+                {homeSubCount > 0 && <span className="text-blue-400 text-[10px]">🔄 {homeSubCount}</span>}
               </div>
               <div className="flex items-center gap-1.5 text-right">
+                {awaySubCount > 0 && <span className="text-blue-400 text-[10px]">🔄 {awaySubCount}</span>}
                 {hasRealLineup && <span className="text-copa-accent font-mono">({match.lineups!.away.formation})</span>}
                 <span>{awayTeam.name}</span>
                 <span>{awayTeam.flag}</span>
@@ -356,11 +408,14 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
               ].map((row, ri) => row.players.length > 0 && (
                 <div key={`a${ri}`} className="absolute inset-x-3 flex justify-around" style={{ top: `${row.topPct}%` }}>
                   {row.players.map((p: any) => (
-                    <div key={p.id} className="flex flex-col items-center" style={{ minWidth: 36 }}>
+                    <div key={p.id} className="flex flex-col items-center relative" style={{ minWidth: 36 }}>
                       <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg border-2"
-                        style={{ background: row.bg, borderColor: row.bd, color: row.tc }}>
+                        style={{ background: p.isSubstitute ? '#7c3aed' : row.bg, borderColor: p.isSubstitute ? '#c4b5fd' : row.bd, color: row.tc }}>
                         {p.number ?? '?'}
                       </div>
+                      {p.isSubstitute && (
+                        <span className="absolute -top-1 -right-1 text-[8px] leading-none">🔄</span>
+                      )}
                       <span className="text-[8px] text-white mt-0.5 bg-black/70 px-1 rounded truncate max-w-[44px] text-center leading-tight">
                         {(p.name ?? '').split(' ').pop()}
                       </span>
@@ -378,11 +433,14 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
               ].map((row, ri) => row.players.length > 0 && (
                 <div key={`h${ri}`} className="absolute inset-x-3 flex justify-around" style={{ top: `${row.topPct}%` }}>
                   {row.players.map((p: any) => (
-                    <div key={p.id} className="flex flex-col items-center" style={{ minWidth: 36 }}>
+                    <div key={p.id} className="flex flex-col items-center relative" style={{ minWidth: 36 }}>
                       <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shadow-lg border-2"
-                        style={{ background: row.bg, borderColor: row.bd, color: row.tc }}>
+                        style={{ background: p.isSubstitute ? '#7c3aed' : row.bg, borderColor: p.isSubstitute ? '#c4b5fd' : row.bd, color: row.tc }}>
                         {p.number ?? '?'}
                       </div>
+                      {p.isSubstitute && (
+                        <span className="absolute -top-1 -right-1 text-[8px] leading-none">🔄</span>
+                      )}
                       <span className="text-[8px] text-white mt-0.5 bg-black/70 px-1 rounded truncate max-w-[44px] text-center leading-tight">
                         {(p.name ?? '').split(' ').pop()}
                       </span>

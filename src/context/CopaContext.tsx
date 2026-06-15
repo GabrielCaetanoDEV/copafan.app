@@ -700,40 +700,47 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'x-apisports-key': DEFAULT_API_FOOTBALL_KEY
       };
 
-      // 1. Lineups (cached permanently per fixtureId)
+      // 1. Lineups — fetch only ONCE, then reuse from in-memory state or localStorage cache
+      // Substitutions are tracked via events (no need to re-fetch lineup each poll)
       const lineupCacheKey = `copa_lineup_${fixtureId}`;
-      let lineups = null;
-      const cachedLineup = localStorage.getItem(lineupCacheKey);
-      
-      if (cachedLineup) {
-        try {
-          lineups = JSON.parse(cachedLineup);
-        } catch { /* ignore */ }
-      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let lineups: any = null;
 
-      if (!lineups) {
-      // API-Football supports CORS natively — call directly without proxy
-      const lineupsUrl = `https://v3.football.api-sports.io/fixtures/lineups?fixture=${fixtureId}`;
-        const lRes = await fetch(lineupsUrl, { headers });
-        if (lRes.ok) {
-          const lData = await lRes.json();
-          if (lData.response) {
-            const parsedLineups = parseApiFootballLineups(lData.response, match.homeTeamId, match.awayTeamId);
-            if (parsedLineups) {
-              lineups = parsedLineups;
-              localStorage.setItem(lineupCacheKey, JSON.stringify(lineups));
+      // Priority: 1) already in match state (fastest), 2) localStorage, 3) API call
+      if (match.lineups?.home?.titulares?.length) {
+        // Already loaded in memory — skip API call entirely
+        lineups = match.lineups;
+      } else {
+        const cachedLineup = localStorage.getItem(lineupCacheKey);
+        if (cachedLineup) {
+          try { lineups = JSON.parse(cachedLineup); } catch { /* ignore */ }
+        }
+        if (!lineups) {
+          // API-Football supports CORS natively — call directly without proxy
+          const lRes = await fetch(
+            `https://v3.football.api-sports.io/fixtures/lineups?fixture=${fixtureId}`,
+            { headers }
+          );
+          if (lRes.ok) {
+            const lData = await lRes.json();
+            if (lData.response) {
+              lineups = parseApiFootballLineups(lData.response, match.homeTeamId, match.awayTeamId);
+              if (lineups) localStorage.setItem(lineupCacheKey, JSON.stringify(lineups));
             }
           }
         }
       }
 
-      // 2. Events & Stats (in parallel)
+      // 2. Events, Stats & Fixture status (all in parallel - 3 calls at once)
       const eventsUrl = `https://v3.football.api-sports.io/fixtures/events?fixture=${fixtureId}`;
       const statsUrl = `https://v3.football.api-sports.io/fixtures/statistics?fixture=${fixtureId}`;
+      const fixtureStatusUrl = `https://v3.football.api-sports.io/fixtures?id=${fixtureId}`;
 
-      const [evRes, stRes] = await Promise.all([
+      const [evRes, stRes, fixRes] = await Promise.all([
         fetch(eventsUrl, { headers }),
-        fetch(statsUrl, { headers })
+        fetch(statsUrl, { headers }),
+        // Only fetch live status if match is LIVE or SCHEDULED (near kickoff) — save call for FINISHED
+        match.status !== 'FINISHED' ? fetch(fixtureStatusUrl, { headers }) : Promise.resolve(null)
       ]);
 
       let events: MatchEvent[] = [];
@@ -752,10 +759,63 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
+      // Parse real match time and status from API-Football
+      let realMinute: number | undefined = match.minute;
+      let realStatus: 'LIVE' | 'FINISHED' | 'SCHEDULED' | undefined = undefined;
+      let isHalftime = false;
+
+      if (fixRes && fixRes.ok) {
+        const fixData = await fixRes.json();
+        const fixInfo = fixData.response?.[0];
+        if (fixInfo) {
+          const statusShort = fixInfo.fixture.status.short; // '1H', 'HT', '2H', 'FT', 'NS', etc.
+          const elapsed = fixInfo.fixture.status.elapsed; // official minute
+
+          // Map API-Football status codes to our internal status
+          if (['FT', 'AET', 'PEN', 'AWD', 'WO'].includes(statusShort)) {
+            realStatus = 'FINISHED';
+            realMinute = undefined;
+          } else if (statusShort === 'HT') {
+            realStatus = 'LIVE';
+            realMinute = 45;
+            isHalftime = true;
+          } else if (['1H', '2H', 'ET', 'P', 'BT', 'INT', 'LIVE'].includes(statusShort)) {
+            realStatus = 'LIVE';
+            realMinute = elapsed ?? match.minute;
+          } else if (['NS', 'TBD'].includes(statusShort)) {
+            realStatus = 'SCHEDULED';
+            realMinute = undefined;
+          }
+
+          // Also update scores from this source (more up-to-date than football-data.org)
+          const apiHomeGoals = fixInfo.goals?.home;
+          const apiAwayGoals = fixInfo.goals?.away;
+          if (apiHomeGoals !== null && apiAwayGoals !== null) {
+            const updatedData = {
+              events,
+              stats,
+              lineups: lineups || undefined,
+              minute: realMinute,
+              isHalftime,
+              ...(realStatus && { status: realStatus }),
+              ...(apiHomeGoals !== undefined && { homeScore: apiHomeGoals }),
+              ...(apiAwayGoals !== undefined && { awayScore: apiAwayGoals }),
+            };
+
+            localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: updatedData }));
+            setMatches(prev => prev.map(m => m.id === match.id ? { ...m, ...updatedData } : m));
+            return;
+          }
+        }
+      }
+
       const updatedData = {
         events,
         stats,
-        lineups: lineups || undefined
+        lineups: lineups || undefined,
+        ...(realMinute !== undefined && { minute: realMinute }),
+        ...(realStatus && { status: realStatus }),
+        isHalftime,
       };
 
       // Cache the result
