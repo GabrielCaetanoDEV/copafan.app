@@ -165,7 +165,7 @@ const rateLimiter = new ApiRateLimiter();
 // API-Football Fixture Lookup Helpers
 // ==============================================================
 const fetchApiFootballFixtures = async (): Promise<any[]> => {
-  const cacheKey = 'api_football_fixtures_cache';
+  const cacheKey = 'api_football_fixtures_cache_2026';
   const cached = localStorage.getItem(cacheKey);
   if (cached) {
     try {
@@ -174,7 +174,7 @@ const fetchApiFootballFixtures = async (): Promise<any[]> => {
   }
 
   try {
-    const url = 'https://v3.football.api-sports.io/fixtures?league=1&season=2022';
+    const url = 'https://v3.football.api-sports.io/fixtures?league=1&season=2026';
     const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
     const res = await fetch(proxyUrl, {
       headers: {
@@ -206,12 +206,8 @@ const findFixtureId = (fixtures: any[], homeTla: string, awayTla: string): numbe
 const getFixtureIdForMatch = (fixtures: any[], match: Match): number | null => {
   if (fixtures.length === 0) return null;
   const exact = findFixtureId(fixtures, match.homeTeamId, match.awayTeamId);
-  if (exact) return exact;
-
-  // Fallback: use a deterministic fixture index from the 64 World Cup 2022 fixtures
-  const matchNum = parseInt(match.id.replace(/\D/g, '')) || 0;
-  const idx = matchNum % fixtures.length;
-  return fixtures[idx].fixture.id;
+  // Only return exact match — do not fall back to a wrong 2022 fixture
+  return exact;
 };
 
 // ==============================================================
@@ -481,8 +477,8 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!key) return;
 
     // Check localStorage cache - use if less than 60 seconds old
-    const cacheKey = 'copa_api_cache';
-    const cacheTimeKey = 'copa_api_cache_time';
+    const cacheKey = 'copa_api_cache_v2';
+    const cacheTimeKey = 'copa_api_cache_time_v2';
     const cachedTime = localStorage.getItem(cacheTimeKey);
     const now = Date.now();
 
@@ -559,11 +555,14 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (key) {
       localStorage.setItem('copa_api_key', key);
       setIsApiMode(true);
+      // Purge old v1 cache keys if present
+      localStorage.removeItem('copa_api_cache');
+      localStorage.removeItem('copa_api_cache_time');
       fetchRealDataFromApi(key);
     } else {
       localStorage.removeItem('copa_api_key');
-      localStorage.removeItem('copa_api_cache');
-      localStorage.removeItem('copa_api_cache_time');
+      localStorage.removeItem('copa_api_cache_v2');
+      localStorage.removeItem('copa_api_cache_time_v2');
       setIsApiMode(false);
       const initialMatches = generateGroupMatches();
       setMatches(initialMatches);
@@ -576,8 +575,8 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshFromApi = useCallback(() => {
     if (apiKey) {
       // Clear cache to force fresh fetch
-      localStorage.removeItem('copa_api_cache');
-      localStorage.removeItem('copa_api_cache_time');
+      localStorage.removeItem('copa_api_cache_v2');
+      localStorage.removeItem('copa_api_cache_time_v2');
       fetchRealDataFromApi(apiKey);
     }
   }, [apiKey, fetchRealDataFromApi]);

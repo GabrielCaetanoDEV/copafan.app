@@ -18,23 +18,42 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'timeline' | 'stats' | 'lineups' | 'group'>('timeline');
 
-  const hSquad = homeTeam ? generateSquad(homeTeam.id) : [];
-  const aSquad = awayTeam ? generateSquad(awayTeam.id) : [];
-
   const hasRealLineup = match.lineups && match.lineups.home && match.lineups.away;
+
+  // Build a proper 1-4-3-3 fallback lineup from the generated squad
+  const buildFallbackLayout = (squad: ReturnType<typeof generateSquad>) => {
+    // squad is sorted: [Goleiros x3, Defensores x7, Meios x7, Atacantes x6]
+    const gk = squad.filter(p => p.position === 'Goleiro').slice(0, 1);
+    const def = squad.filter(p => p.position === 'Defensor').slice(0, 4);
+    const mid = squad.filter(p => p.position === 'Meio-campista').slice(0, 3);
+    const fwd = squad.filter(p => p.position === 'Atacante').slice(0, 3);
+    return {
+      Goleiro: gk,
+      Defensor: def,
+      MeioCampista: mid,
+      Atacante: fwd,
+    };
+  };
 
   // Group players by position for field layout
   const getPlayersByPosition = (players: any[]) => {
     return {
-      Goleiro: players.filter(p => p.position === 'Goleiro').slice(0, 1),
-      Defensor: players.filter(p => p.position === 'Defensor'),
-      MeioCampista: players.filter(p => p.position === 'Meio-campista'),
-      Atacante: players.filter(p => p.position === 'Atacante')
+      Goleiro: players.filter((p: any) => p.position === 'Goleiro').slice(0, 1),
+      Defensor: players.filter((p: any) => p.position === 'Defensor'),
+      MeioCampista: players.filter((p: any) => p.position === 'Meio-campista'),
+      Atacante: players.filter((p: any) => p.position === 'Atacante')
     };
   };
 
-  const homeLayout = getPlayersByPosition(hasRealLineup ? match.lineups!.home.titulares : hSquad.slice(0, 11));
-  const awayLayout = getPlayersByPosition(hasRealLineup ? match.lineups!.away.titulares : aSquad.slice(0, 11));
+  const hSquad = homeTeam ? generateSquad(homeTeam.id) : [];
+  const aSquad = awayTeam ? generateSquad(awayTeam.id) : [];
+
+  const homeLayout = hasRealLineup
+    ? getPlayersByPosition(match.lineups!.home.titulares)
+    : buildFallbackLayout(hSquad);
+  const awayLayout = hasRealLineup
+    ? getPlayersByPosition(match.lineups!.away.titulares)
+    : buildFallbackLayout(aSquad);
 
   // Helper to render stats bars
   const renderStatBar = (label: string, homeValue: number, awayValue: number) => {
@@ -122,8 +141,11 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
         {activeTab === 'timeline' && (
           <div className="space-y-4 relative before:absolute before:top-2 before:bottom-2 before:left-[19px] before:w-[2px] before:bg-slate-800">
             {match.events.length === 0 ? (
-              <div className="text-center py-10 text-slate-500 text-sm">
-                Partida ainda não iniciada. A narração em tempo real começará junto com o apito inicial.
+              <div className="text-center py-10 text-slate-500 text-sm flex flex-col items-center gap-3">
+                <Clock size={32} className="text-slate-700" />
+                {match.status === 'SCHEDULED' && <p>Partida ainda não iniciada. O lance a lance começará junto com o apito inicial.</p>}
+                {match.status === 'FINISHED' && <p>Lance a lance não disponível para esta partida.<br/><span className="text-xs text-slate-600">Os dados de eventos são carregados via API ao selecionar uma partida encerrada recente.</span></p>}
+                {match.status === 'LIVE' && <p>Carregando lance a lance...</p>}
               </div>
             ) : (
               match.events.map((event) => {
@@ -177,18 +199,29 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
         )}
 
         {/* Tab 2: Statistics */}
-        {activeTab === 'stats' && (
-          <div className="space-y-4 max-w-lg mx-auto">
-            {renderStatBar('Posse de Bola (%)', match.stats.possessionHome, match.stats.possessionAway)}
-            {renderStatBar('Total de Chutes', match.stats.shotsHome, match.stats.shotsAway)}
-            {renderStatBar('Chutes no Gol', match.stats.shotsOnTargetHome, match.stats.shotsOnTargetAway)}
-            {renderStatBar('Faltas Cometidas', match.stats.foulsHome, match.stats.foulsAway)}
-            {renderStatBar('Escanteios', match.stats.cornersHome, match.stats.cornersAway)}
-            {renderStatBar('Cartões Amarelos', match.stats.yellowHome, match.stats.yellowAway)}
-            {renderStatBar('Cartões Vermelhos', match.stats.redHome, match.stats.redAway)}
-            {renderStatBar('Impedimentos', match.stats.offsidesHome, match.stats.offsidesAway)}
-          </div>
-        )}
+        {activeTab === 'stats' && (() => {
+          const hasStats = match.stats.possessionHome > 0 || match.stats.possessionAway > 0 ||
+            match.stats.shotsHome > 0 || match.stats.shotsAway > 0;
+          return hasStats ? (
+            <div className="space-y-4 max-w-lg mx-auto">
+              {renderStatBar('Posse de Bola (%)', match.stats.possessionHome, match.stats.possessionAway)}
+              {renderStatBar('Total de Chutes', match.stats.shotsHome, match.stats.shotsAway)}
+              {renderStatBar('Chutes no Gol', match.stats.shotsOnTargetHome, match.stats.shotsOnTargetAway)}
+              {renderStatBar('Faltas Cometidas', match.stats.foulsHome, match.stats.foulsAway)}
+              {renderStatBar('Escanteios', match.stats.cornersHome, match.stats.cornersAway)}
+              {renderStatBar('Cartões Amarelos', match.stats.yellowHome, match.stats.yellowAway)}
+              {renderStatBar('Cartões Vermelhos', match.stats.redHome, match.stats.redAway)}
+              {renderStatBar('Impedimentos', match.stats.offsidesHome, match.stats.offsidesAway)}
+            </div>
+          ) : (
+            <div className="text-center py-10 text-slate-500 text-sm flex flex-col items-center gap-3">
+              <BarChart3 size={32} className="text-slate-700" />
+              {match.status === 'SCHEDULED' && <p>Estatísticas serão exibidas após o início da partida.</p>}
+              {match.status === 'FINISHED' && <p>Estatísticas não disponíveis para esta partida.<br/><span className="text-xs text-slate-600">Selecione uma partida recente para carregar os dados via API.</span></p>}
+              {match.status === 'LIVE' && <p>Carregando estatísticas em tempo real...</p>}
+            </div>
+          );
+        })()}
 
         {/* Tab 3: Lineups */}
         {activeTab === 'lineups' && homeTeam && awayTeam && (

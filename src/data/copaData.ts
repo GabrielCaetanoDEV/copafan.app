@@ -422,41 +422,13 @@ export function generateGroupMatches(): Match[] {
 
       if (isPast) {
         status = 'FINISHED';
-        const randScore = getSeededRandom(t0 + t1 + String(idx));
-        homeScore = Math.floor(randScore() * 3.5);
-        awayScore = Math.floor(randScore() * 2.5);
+        // Scores will be loaded from football-data.org API
+        // We start with null - the API will fill in actual scores
+        homeScore = null;
+        awayScore = null;
 
-        const stats = makeEmptyStats();
-        stats.possessionHome = Math.floor(40 + randScore() * 20);
-        stats.possessionAway = 100 - stats.possessionHome;
-        stats.shotsHome = Math.floor(6 + randScore() * 12);
-        stats.shotsAway = Math.floor(5 + randScore() * 10);
-        stats.shotsOnTargetHome = Math.floor(stats.shotsHome * (0.3 + randScore() * 0.3));
-        stats.shotsOnTargetAway = Math.floor(stats.shotsAway * (0.3 + randScore() * 0.3));
-        stats.foulsHome = Math.floor(8 + randScore() * 10);
-        stats.foulsAway = Math.floor(8 + randScore() * 10);
-        stats.cornersHome = Math.floor(2 + randScore() * 8);
-        stats.cornersAway = Math.floor(2 + randScore() * 8);
-
-        const hSquad = generateSquad(matchup.h);
-        const aSquad = generateSquad(matchup.a);
-        const hTeamName = groupTeams.find(t => t.id === matchup.h)?.name || matchup.h;
-        const aTeamName = groupTeams.find(t => t.id === matchup.a)?.name || matchup.a;
-
-        events.push({ id: `ev_${matchCounter}_start`, minute: 1, type: 'comment', detail: 'Apita o árbitro! Começa a partida.' });
-
-        for (let g = 0; g < (homeScore || 0); g++) {
-          const scorer = hSquad[Math.floor(randScore() * 5) + 18] || hSquad[10];
-          events.push({ id: `ev_${matchCounter}_hg${g}`, minute: Math.floor(randScore() * 88) + 2, type: 'goal', teamId: matchup.h, playerName: scorer.name, detail: `Gol do ${hTeamName}! ${scorer.name} balança as redes!` });
-        }
-        for (let g = 0; g < (awayScore || 0); g++) {
-          const scorer = aSquad[Math.floor(randScore() * 5) + 18] || aSquad[10];
-          events.push({ id: `ev_${matchCounter}_ag${g}`, minute: Math.floor(randScore() * 88) + 2, type: 'goal', teamId: matchup.a, playerName: scorer.name, detail: `Gol do ${aTeamName}! ${scorer.name} finaliza com precisão!` });
-        }
-        events.push({ id: `ev_${matchCounter}_end`, minute: 90, type: 'comment', detail: 'Fim de jogo! O árbitro apita o final da partida.' });
-        events.sort((a, b) => a.minute - b.minute);
-
-        matches.push({ id: `M_${String(matchCounter).padStart(3, '0')}`, homeTeamId: matchup.h, awayTeamId: matchup.a, homeScore, awayScore, date: matchDate.toISOString(), status, stage: 'GROUP', group: groupName, stadiumId: STADIUMS[stadiumIndex].id, youtubeId, minute: currentMinute, events, stats });
+        // Events and stats are intentionally empty — they come from API-Football
+        matches.push({ id: `M_${String(matchCounter).padStart(3, '0')}`, homeTeamId: matchup.h, awayTeamId: matchup.a, homeScore, awayScore, date: matchDate.toISOString(), status, stage: 'GROUP', group: groupName, stadiumId: STADIUMS[stadiumIndex].id, youtubeId, minute: currentMinute, events: [], stats: makeEmptyStats() });
       } else if (isCurrentlyLive) {
         status = 'LIVE';
         homeScore = 0;
