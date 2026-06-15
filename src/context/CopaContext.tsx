@@ -23,8 +23,8 @@ import {
   parseApiFootballLineups
 } from '../services/apiFootball';
 
-const DEFAULT_FOOTBALL_DATA_KEY = import.meta.env.VITE_FOOTBALL_DATA_KEY || '8c0b296b4122485eb0fc9167232231ab';
-const DEFAULT_API_FOOTBALL_KEY = import.meta.env.VITE_API_FOOTBALL_KEY || '11098850f9600270cf5494ac33c6ba5a';
+const DEFAULT_FOOTBALL_DATA_KEY = import.meta.env.VITE_FOOTBALL_DATA_KEY ?? '';
+const DEFAULT_API_FOOTBALL_KEY = import.meta.env.VITE_API_FOOTBALL_KEY ?? '';
 
 // ==============================================================
 // TYPES
@@ -39,6 +39,7 @@ interface CopaContextType {
   apiKey: string;
   isApiMode: boolean;
   isLoading: boolean;
+  isDetailsLoading: boolean; // true while fetching match events/stats/lineups
   isOnline: boolean;
   lastUpdated: Date | null;
   setApiKey: (key: string) => void;
@@ -268,6 +269,7 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [apiKey, setApiKeyInternal] = useState<string>(() => localStorage.getItem('copa_api_key') || DEFAULT_FOOTBALL_DATA_KEY);
   const [isApiMode, setIsApiMode] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isDetailsLoading, setIsDetailsLoading] = useState<boolean>(false);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const teamsRef = useRef<Team[]>(INITIAL_TEAMS);
@@ -655,37 +657,28 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!match) return;
     
     // For SCHEDULED matches, only try to fetch if the match starts within 2 hours
-    // (Teams submit lineups 1 hour before kickoff, API-Football usually has them)
     if (match.status === 'SCHEDULED') {
       const matchStartMs = new Date(match.date).getTime();
-      const twoHoursMs = 2 * 60 * 60 * 1000;
-      if (Date.now() < matchStartMs - twoHoursMs) return; // too far in future
+      if (Date.now() < matchStartMs - 2 * 60 * 60 * 1000) return; // too far in future
     }
 
+    setIsDetailsLoading(true);
     const cacheKey = `copa_match_details_v2_${match.id}`;
-    const cachedData = localStorage.getItem(cacheKey);
     const now = Date.now();
 
-    if (cachedData) {
-      try {
-        const { timestamp, data } = JSON.parse(cachedData);
-        // Finished = cache forever; Live = 5min; Scheduled (near kickoff) = 10min
-        const cacheDuration = match.status === 'FINISHED' ? Infinity
-          : match.status === 'LIVE' ? 300000
-          : 600000;
-        // IMPORTANT: If LIVE and cache has no events/stats, IGNORE the cache and re-fetch
-        // This handles the case where we cached empty pre-match data
-        const hasUsefulData = data && (
-          (data.events && data.events.length > 0) ||
-          (data.stats && (data.stats.possessionHome > 0 || data.stats.shotsHome > 0))
-        );
-        if (now - timestamp < cacheDuration && (match.status !== 'LIVE' || hasUsefulData)) {
-          setTimeout(() => {
-            setMatches(prev => prev.map(m => m.id === match.id ? { ...m, ...data } : m));
-          }, 0);
-          return;
-        }
-      } catch { /* ignore */ }
+    // For FINISHED matches, use cache forever (score won't change)
+    if (match.status === 'FINISHED') {
+      const cachedData = localStorage.getItem(cacheKey);
+      if (cachedData) {
+        try {
+          const { data } = JSON.parse(cachedData);
+          if (data) {
+            setTimeout(() => setMatches(prev => prev.map(m => m.id === match.id ? { ...m, ...data } : m)), 0);
+            setIsDetailsLoading(false);
+            return;
+          }
+        } catch { /* ignore */ }
+      }
     }
 
     try {
@@ -696,27 +689,23 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      const headers = {
-        'x-apisports-key': DEFAULT_API_FOOTBALL_KEY
-      };
+      const headers = { 'x-apisports-key': DEFAULT_API_FOOTBALL_KEY };
 
-      // 1. Lineups — fetch only ONCE, then reuse from in-memory state or localStorage cache
-      // Substitutions are tracked via events (no need to re-fetch lineup each poll)
+      // ─────────────────────────────────────────────────────────────
+      // STEP 1: Lineups — fetch only ONCE (already cached ✅)
+      // ─────────────────────────────────────────────────────────────
       const lineupCacheKey = `copa_lineup_${fixtureId}`;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let lineups: any = null;
 
-      // Priority: 1) already in match state (fastest), 2) localStorage, 3) API call
       if (match.lineups?.home?.titulares?.length) {
-        // Already loaded in memory — skip API call entirely
-        lineups = match.lineups;
+        lineups = match.lineups; // already in memory — 0 API calls
       } else {
         const cachedLineup = localStorage.getItem(lineupCacheKey);
         if (cachedLineup) {
           try { lineups = JSON.parse(cachedLineup); } catch { /* ignore */ }
         }
         if (!lineups) {
-          // API-Football supports CORS natively — call directly without proxy
           const lRes = await fetch(
             `https://v3.football.api-sports.io/fixtures/lineups?fixture=${fixtureId}`,
             { headers }
@@ -731,85 +720,100 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // 2. Events, Stats & Fixture status (all in parallel - 3 calls at once)
-      const eventsUrl = `https://v3.football.api-sports.io/fixtures/events?fixture=${fixtureId}`;
-      const statsUrl = `https://v3.football.api-sports.io/fixtures/statistics?fixture=${fixtureId}`;
-      const fixtureStatusUrl = `https://v3.football.api-sports.io/fixtures?id=${fixtureId}`;
-
-      const [evRes, stRes, fixRes] = await Promise.all([
-        fetch(eventsUrl, { headers }),
-        fetch(statsUrl, { headers }),
-        // Only fetch live status if match is LIVE or SCHEDULED (near kickoff) — save call for FINISHED
-        match.status !== 'FINISHED' ? fetch(fixtureStatusUrl, { headers }) : Promise.resolve(null)
-      ]);
-
-      let events: MatchEvent[] = [];
-      if (evRes.ok) {
-        const evData = await evRes.json();
-        if (evData.response) {
-          events = parseApiFootballEvents(evData.response, match.id);
-        }
-      }
-
-      let stats = match.stats;
-      if (stRes.ok) {
-        const stData = await stRes.json();
-        if (stData.response) {
-          stats = parseApiFootballStats(stData.response, match.homeTeamId, match.awayTeamId);
-        }
-      }
-
-      // Parse real match time and status from API-Football
+      // ─────────────────────────────────────────────────────────────
+      // STEP 2: Fixture status — ALWAYS (1 call/poll)
+      // Returns: score, elapsed minute, status (1H/HT/2H/FT)
+      // ─────────────────────────────────────────────────────────────
       let realMinute: number | undefined = match.minute;
       let realStatus: 'LIVE' | 'FINISHED' | 'SCHEDULED' | undefined = undefined;
       let isHalftime = false;
+      let apiHomeGoals: number | null = match.homeScore;
+      let apiAwayGoals: number | null = match.awayScore;
 
-      if (fixRes && fixRes.ok) {
-        const fixData = await fixRes.json();
-        const fixInfo = fixData.response?.[0];
-        if (fixInfo) {
-          const statusShort = fixInfo.fixture.status.short; // '1H', 'HT', '2H', 'FT', 'NS', etc.
-          const elapsed = fixInfo.fixture.status.elapsed; // official minute
+      if (match.status !== 'FINISHED') {
+        const fixRes = await fetch(
+          `https://v3.football.api-sports.io/fixtures?id=${fixtureId}`,
+          { headers }
+        );
+        if (fixRes.ok) {
+          const fixData = await fixRes.json();
+          const fixInfo = fixData.response?.[0];
+          if (fixInfo) {
+            const statusShort = fixInfo.fixture.status.short;
+            const elapsed = fixInfo.fixture.status.elapsed;
 
-          // Map API-Football status codes to our internal status
-          if (['FT', 'AET', 'PEN', 'AWD', 'WO'].includes(statusShort)) {
-            realStatus = 'FINISHED';
-            realMinute = undefined;
-          } else if (statusShort === 'HT') {
-            realStatus = 'LIVE';
-            realMinute = 45;
-            isHalftime = true;
-          } else if (['1H', '2H', 'ET', 'P', 'BT', 'INT', 'LIVE'].includes(statusShort)) {
-            realStatus = 'LIVE';
-            realMinute = elapsed ?? match.minute;
-          } else if (['NS', 'TBD'].includes(statusShort)) {
-            realStatus = 'SCHEDULED';
-            realMinute = undefined;
-          }
+            if (['FT', 'AET', 'PEN', 'AWD', 'WO'].includes(statusShort)) {
+              realStatus = 'FINISHED'; realMinute = undefined;
+            } else if (statusShort === 'HT') {
+              realStatus = 'LIVE'; realMinute = 45; isHalftime = true;
+            } else if (['1H', '2H', 'ET', 'P', 'BT', 'INT', 'LIVE'].includes(statusShort)) {
+              realStatus = 'LIVE'; realMinute = elapsed ?? match.minute;
+            } else if (['NS', 'TBD'].includes(statusShort)) {
+              realStatus = 'SCHEDULED'; realMinute = undefined;
+            }
 
-          // Also update scores from this source (more up-to-date than football-data.org)
-          const apiHomeGoals = fixInfo.goals?.home;
-          const apiAwayGoals = fixInfo.goals?.away;
-          if (apiHomeGoals !== null && apiAwayGoals !== null) {
-            const updatedData = {
-              events,
-              stats,
-              lineups: lineups || undefined,
-              minute: realMinute,
-              minuteUpdatedAt: realMinute !== undefined ? now : undefined,
-              isHalftime,
-              ...(realStatus && { status: realStatus }),
-              ...(apiHomeGoals !== undefined && { homeScore: apiHomeGoals }),
-              ...(apiAwayGoals !== undefined && { awayScore: apiAwayGoals }),
-            };
-
-            localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: updatedData }));
-            setMatches(prev => prev.map(m => m.id === match.id ? { ...m, ...updatedData } : m));
-            return;
+            apiHomeGoals = fixInfo.goals?.home ?? match.homeScore;
+            apiAwayGoals = fixInfo.goals?.away ?? match.awayScore;
           }
         }
       }
 
+      // ─────────────────────────────────────────────────────────────
+      // STEP 3: Events — ONLY when score changed or first fetch
+      // Detects goals by comparing last known score vs API score
+      // ─────────────────────────────────────────────────────────────
+      const prevTotal = (match.homeScore ?? 0) + (match.awayScore ?? 0);
+      const newTotal = (apiHomeGoals ?? 0) + (apiAwayGoals ?? 0);
+      const scoreChanged = newTotal !== prevTotal;
+      const noEventsYet = match.events.length === 0;
+      const isFinished = realStatus === 'FINISHED' || match.status === 'FINISHED';
+
+      let events: MatchEvent[] = match.events; // default: keep existing
+
+      // Fetch events when: first time, score changed (goal/card), or finished (get final state)
+      const shouldFetchEvents = noEventsYet || scoreChanged || (isFinished && match.events.length === 0);
+
+      if (shouldFetchEvents) {
+        const evRes = await fetch(
+          `https://v3.football.api-sports.io/fixtures/events?fixture=${fixtureId}`,
+          { headers }
+        );
+        if (evRes.ok) {
+          const evData = await evRes.json();
+          if (evData.response) events = parseApiFootballEvents(evData.response, match.id);
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // STEP 4: Statistics — every 15 minutes only (not every 5)
+      // Stats barely change in 5 min; this cuts stats calls by 66%
+      // ─────────────────────────────────────────────────────────────
+      const statsCacheKey = `copa_stats_${fixtureId}`;
+      const statsCacheTTL = 15 * 60 * 1000; // 15 minutes
+      let stats = match.stats;
+
+      const cachedStats = localStorage.getItem(statsCacheKey);
+      const statsExpired = !cachedStats || (now - JSON.parse(cachedStats).timestamp > statsCacheTTL);
+
+      if (statsExpired && (match.status === 'LIVE' || isFinished)) {
+        const stRes = await fetch(
+          `https://v3.football.api-sports.io/fixtures/statistics?fixture=${fixtureId}`,
+          { headers }
+        );
+        if (stRes.ok) {
+          const stData = await stRes.json();
+          if (stData.response) {
+            stats = parseApiFootballStats(stData.response, match.homeTeamId, match.awayTeamId);
+            localStorage.setItem(statsCacheKey, JSON.stringify({ timestamp: now, stats }));
+          }
+        }
+      } else if (cachedStats) {
+        try { stats = JSON.parse(cachedStats).stats; } catch { /* keep existing */ }
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // Assemble and save result
+      // ─────────────────────────────────────────────────────────────
       const updatedData = {
         events,
         stats,
@@ -817,20 +821,19 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ...(realMinute !== undefined && { minute: realMinute, minuteUpdatedAt: now }),
         ...(realStatus && { status: realStatus }),
         isHalftime,
+        ...(apiHomeGoals !== null && { homeScore: apiHomeGoals }),
+        ...(apiAwayGoals !== null && { awayScore: apiAwayGoals }),
       };
 
-      // Cache the result
-      localStorage.setItem(cacheKey, JSON.stringify({
-        timestamp: now,
-        data: updatedData
-      }));
-
-      // Update match state
+      localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, data: updatedData }));
       setMatches(prev => prev.map(m => m.id === match.id ? { ...m, ...updatedData } : m));
+
     } catch (err) {
       console.error(`Error fetching details for match ${match.id}:`, err);
+    } finally {
+      setIsDetailsLoading(false);
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Polling details for the selected match (LIVE every 5min, near-kickoff SCHEDULED every 10min)
   const selectedMatch = matches.find(m => m.id === selectedMatchId);
@@ -904,6 +907,7 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
       apiKey,
       isApiMode,
       isLoading,
+      isDetailsLoading,
       isOnline,
       lastUpdated,
       setApiKey,

@@ -498,29 +498,37 @@ export const GoogleMatchTabs: React.FC<GoogleMatchTabsProps> = ({
                 <h4 className="font-bold text-copa-green mb-2 flex items-center gap-1">
                   <span>{homeTeam.flag}</span> Reservas {homeTeam.name}
                 </h4>
-                <ul className="space-y-1 text-slate-400">
-                  {(hasRealLineup ? match.lineups!.home.reservas : hSquad.slice(11)).map(p => (
-                    <li key={p.id} className="flex gap-2">
-                      <span className="font-mono text-slate-500 w-4">{p.number}</span>
-                      <span className="text-slate-300">{p.name}</span>
-                      <span className="text-[10px] text-slate-500">({p.position[0]})</span>
-                    </li>
-                  ))}
-                </ul>
+                {(hasRealLineup ? match.lineups!.home.reservas : hSquad.slice(11)).length === 0 ? (
+                  <p className="text-slate-600 italic text-[10px]">Dados do banco não disponíveis.</p>
+                ) : (
+                  <ul className="space-y-1 text-slate-400">
+                    {(hasRealLineup ? match.lineups!.home.reservas : hSquad.slice(11)).map(p => (
+                      <li key={p.id} className="flex gap-2">
+                        <span className="font-mono text-slate-500 w-4">{p.number}</span>
+                        <span className="text-slate-300">{p.name}</span>
+                        <span className="text-[10px] text-slate-500">({p.position[0]})</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div>
                 <h4 className="font-bold text-copa-accent mb-2 flex items-center gap-1">
                   <span>{awayTeam.flag}</span> Reservas {awayTeam.name}
                 </h4>
-                <ul className="space-y-1 text-slate-400">
-                  {(hasRealLineup ? match.lineups!.away.reservas : aSquad.slice(11)).map(p => (
-                    <li key={p.id} className="flex gap-2">
-                      <span className="font-mono text-slate-500 w-4">{p.number}</span>
-                      <span className="text-slate-300">{p.name}</span>
-                      <span className="text-[10px] text-slate-500">({p.position[0]})</span>
-                    </li>
-                  ))}
-                </ul>
+                {(hasRealLineup ? match.lineups!.away.reservas : aSquad.slice(11)).length === 0 ? (
+                  <p className="text-slate-600 italic text-[10px]">Dados do banco não disponíveis.</p>
+                ) : (
+                  <ul className="space-y-1 text-slate-400">
+                    {(hasRealLineup ? match.lineups!.away.reservas : aSquad.slice(11)).map(p => (
+                      <li key={p.id} className="flex gap-2">
+                        <span className="font-mono text-slate-500 w-4">{p.number}</span>
+                        <span className="text-slate-300">{p.name}</span>
+                        <span className="text-[10px] text-slate-500">({p.position[0]})</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           </div>

@@ -12,7 +12,8 @@ export const MatchCenter: React.FC = () => {
     matches, 
     teams, 
     selectedMatchId, 
-    setSelectedMatchId
+    setSelectedMatchId,
+    isDetailsLoading,
   } = useCopa();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -27,8 +28,8 @@ export const MatchCenter: React.FC = () => {
     ? teams.filter(t => t.group === selectedMatch.group).sort((a,b) => b.points - a.points)
     : [];
 
-  // Live ticking clock for the selected match
-  const { displayMinute, isHalftime } = useLiveClock(selectedMatch ?? {} as any);
+  // Live ticking clock for the selected match (hook handles undefined safely)
+  const { displayMinute, isHalftime } = useLiveClock(selectedMatch);
 
   // Filter matches
   const filteredMatches = matches.filter(m => {
@@ -287,6 +288,13 @@ export const MatchCenter: React.FC = () => {
                 <span className="text-[10px] text-slate-500 uppercase font-mono mt-0.5">{selectedMatch.awayTeamId}</span>
               </div>
             </div>
+
+            {/* Detail fetch loading indicator */}
+            {isDetailsLoading && (
+              <div className="relative h-0.5 w-full overflow-hidden rounded-full bg-slate-800 mb-1">
+                <div className="absolute inset-y-0 left-0 w-1/2 bg-copa-green rounded-full animate-[loadbar_1.2s_ease-in-out_infinite]" />
+              </div>
+            )}
 
             {/* Google Stats Tabs */}
             <GoogleMatchTabs
