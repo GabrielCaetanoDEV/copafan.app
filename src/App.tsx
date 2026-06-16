@@ -133,7 +133,7 @@ function App() {
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1">
+      <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-6 flex-1">
         
         {activeTab === 'matches' && <MatchCenter />}
         {activeTab === 'bracket' && <BracketView />}
@@ -171,9 +171,9 @@ function App() {
                       <h3 className="text-sm font-bold text-white font-display">Grupo {groupChar}</h3>
                       <span className="text-[9px] text-slate-500 font-mono font-bold uppercase tracking-widest">FIFA WORLD CUP 2026</span>
                     </div>
-
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs whitespace-nowrap min-w-[500px]">
+                        <thead>
                         <tr className="text-slate-500 font-semibold border-b border-slate-950/60 uppercase text-[9px] tracking-wider bg-slate-950/30">
                           <th className="py-2 pl-3 w-6 text-center">Pos</th>
                           <th className="py-2 pl-2">Seleção</th>
@@ -229,7 +229,8 @@ function App() {
                           );
                         })}
                       </tbody>
-                    </table>
+                      </table>
+                    </div>
                   </div>
                 );
               })}

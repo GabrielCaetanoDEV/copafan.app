@@ -4,7 +4,7 @@ import { useCopa } from '../../context/CopaContext';
 import { STADIUMS, Match } from '../../data/copaData';
 import { LivePlayer } from './LivePlayer';
 import { GoogleMatchTabs } from './GoogleMatchTabs';
-import { Search, Tv, Award, Calendar } from 'lucide-react';
+import { Search, Tv, Award, Calendar, ArrowLeft } from 'lucide-react';
 import { useLiveClock } from '../../hooks/useLiveClock';
 
 export const MatchCenter: React.FC = () => {
@@ -109,8 +109,8 @@ export const MatchCenter: React.FC = () => {
   return (
     <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       
-      {/* Left Panel: Matches List (5 cols) */}
-      <div className="lg:col-span-5 flex flex-col gap-4 h-[calc(100vh-140px)] min-h-[500px]">
+      {/* Left Panel: Matches List (5 cols) - Hidden on mobile if match is selected */}
+      <div className={`lg:col-span-5 flex-col gap-4 h-[calc(100vh-140px)] min-h-[500px] ${selectedMatchId ? 'hidden lg:flex' : 'flex'}`}>
         {/* Search & Filters */}
         <div className="glass-panel p-4 rounded-2xl flex flex-col gap-3 border-copa-border">
           <div className="relative">
@@ -224,16 +224,24 @@ export const MatchCenter: React.FC = () => {
         </div>
       </div>
 
-      {/* Right Panel: Live match embed & details (7 cols) */}
-      <div className="lg:col-span-7 flex flex-col">
+      {/* Right Panel: Live match embed & details (7 cols) - Hidden on mobile if NO match is selected */}
+      <div className={`lg:col-span-7 flex-col ${selectedMatchId ? 'flex' : 'hidden lg:flex'}`}>
         {selectedMatch ? (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2">
-                <Tv className="text-copa-green" size={20} />
-                Central da Partida
-              </h2>
-
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setSelectedMatchId(null)}
+                  className="lg:hidden p-1.5 bg-slate-800 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition"
+                  title="Voltar para lista de jogos"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                  <Tv className="text-copa-green" size={20} />
+                  Central da Partida
+                </h2>
+              </div>
             </div>
 
             <LivePlayer 
