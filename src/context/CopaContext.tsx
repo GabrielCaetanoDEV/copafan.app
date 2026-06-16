@@ -702,6 +702,23 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         } catch { /* ignore */ }
       }
+    } else {
+      // For LIVE and SCHEDULED matches, respect cache TTL to avoid rapid re-fetches
+      const cachedDataStr = localStorage.getItem(cacheKey);
+      if (cachedDataStr) {
+        try {
+          const { timestamp, data } = JSON.parse(cachedDataStr);
+          if (timestamp && data) {
+            const cacheDuration = match.status === 'LIVE' ? 300000 : 600000;
+            if (now - timestamp < cacheDuration) {
+              // Cache is still fresh, do not call API!
+              setTimeout(() => setMatches(prev => prev.map(m => m.id === match.id ? { ...m, ...data } : m)), 0);
+              setIsDetailsLoading(false);
+              return;
+            }
+          }
+        } catch { /* ignore */ }
+      }
     }
 
     try {
