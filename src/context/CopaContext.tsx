@@ -23,8 +23,8 @@ import {
   parseApiFootballLineups
 } from '../services/apiFootball';
 
-const DEFAULT_FOOTBALL_DATA_KEY = import.meta.env.VITE_FOOTBALL_DATA_KEY ?? '';
-const DEFAULT_API_FOOTBALL_KEY = import.meta.env.VITE_API_FOOTBALL_KEY ?? '';
+const DEFAULT_FOOTBALL_DATA_KEY = import.meta.env.VITE_FOOTBALL_DATA_KEY || '8c0b296b4122485eb0fc9167232231ab';
+const DEFAULT_API_FOOTBALL_KEY = import.meta.env.VITE_API_FOOTBALL_KEY || '11098850f9600270cf5494ac33c6ba5a';
 
 // ==============================================================
 // TYPES
@@ -464,7 +464,30 @@ export const CopaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 3. Calculate standings from API matches
     const standings = calculateStandings(extractedTeams, mappedMatches);
     setTeamsState(standings);
-    setMatches(mappedMatches);
+    
+    // Merge mappedMatches with existing state to preserve API-Football enriched data
+    setMatches(prev => {
+      return mappedMatches.map(newMatch => {
+        const existing = prev.find(m => m.id === newMatch.id);
+        if (!existing) return newMatch;
+
+        return {
+          ...newMatch,
+          // Preserve enriched API-Football data
+          events: existing.events.length > 0 ? existing.events : newMatch.events,
+          stats: (existing.stats && (existing.stats.possessionHome > 0 || existing.stats.shotsHome > 0)) ? existing.stats : newMatch.stats,
+          lineups: existing.lineups || newMatch.lineups,
+          // API-Football scores are generally more real-time/accurate
+          homeScore: existing.homeScore ?? newMatch.homeScore,
+          awayScore: existing.awayScore ?? newMatch.awayScore,
+          // Preserve live clock state
+          minute: existing.minute ?? newMatch.minute,
+          minuteUpdatedAt: existing.minuteUpdatedAt,
+          isHalftime: existing.isHalftime,
+          status: (existing.status === 'LIVE' || existing.status === 'FINISHED') ? existing.status : newMatch.status,
+        };
+      });
+    });
 
     // Select a live or finished match
     const liveMatch = mappedMatches.find(m => m.status === 'LIVE');
