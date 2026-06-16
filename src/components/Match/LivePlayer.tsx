@@ -67,7 +67,7 @@ export const LivePlayer: React.FC<LivePlayerProps> = ({ match, homeTeam, awayTea
   // ================================================================
   if (match.status === 'SCHEDULED') {
     return (
-      <div className="relative aspect-video w-full rounded-2xl overflow-hidden glass-panel flex flex-col justify-center items-center p-6 text-center group border-copa-border">
+      <div className="relative w-full rounded-2xl overflow-hidden glass-panel flex flex-col justify-center items-center p-6 sm:p-8 text-center group border-copa-border">
         <div className="absolute inset-0 bg-gradient-to-t from-copa-bg via-transparent to-transparent opacity-90 z-0" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(59,130,246,0.12)_0%,_transparent_60%)] z-0" />
 
@@ -77,7 +77,7 @@ export const LivePlayer: React.FC<LivePlayerProps> = ({ match, homeTeam, awayTea
             Agendado
           </span>
 
-          <div className="flex justify-center items-center gap-8 mb-6">
+          <div className="flex justify-center items-center gap-4 sm:gap-8 mb-6 w-full">
             <div className="flex flex-col items-center">
               <span className="text-5xl filter drop-shadow-lg transform group-hover:scale-110 transition duration-300">{homeTeam?.flag}</span>
               <span className="text-sm font-semibold mt-2 text-slate-300">{homeTeam?.name}</span>
@@ -124,7 +124,7 @@ export const LivePlayer: React.FC<LivePlayerProps> = ({ match, homeTeam, awayTea
   // ================================================================
   if (match.status === 'FINISHED') {
     return (
-      <div className="relative aspect-video w-full rounded-2xl overflow-hidden glass-panel flex flex-col justify-center items-center p-6 text-center group border-copa-border">
+      <div className="relative w-full rounded-2xl overflow-hidden glass-panel flex flex-col justify-center items-center p-6 sm:p-8 text-center group border-copa-border">
         <div className="absolute inset-0 bg-gradient-to-t from-copa-bg via-transparent to-transparent opacity-90 z-0" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(0,255,135,0.04)_0%,_transparent_60%)] z-0" />
 
@@ -134,7 +134,7 @@ export const LivePlayer: React.FC<LivePlayerProps> = ({ match, homeTeam, awayTea
             Encerrado
           </span>
 
-          <div className="flex justify-center items-center gap-6 sm:gap-12 mb-5">
+          <div className="flex justify-center items-center gap-4 sm:gap-12 mb-5 w-full">
             <div className="flex flex-col items-center">
               <span className="text-5xl filter drop-shadow-md">{homeTeam?.flag}</span>
               <span className="text-sm font-semibold mt-2 text-slate-300">{homeTeam?.name}</span>
@@ -190,7 +190,7 @@ export const LivePlayer: React.FC<LivePlayerProps> = ({ match, homeTeam, awayTea
   const cazeTvLiveUrl = 'https://www.youtube.com/@CazeTV/live';
 
   return (
-    <div className="relative aspect-video w-full rounded-2xl overflow-hidden glass-panel flex flex-col justify-center items-center p-6 text-center group border-copa-border shadow-2xl">
+    <div className="relative w-full rounded-2xl overflow-hidden glass-panel flex flex-col justify-center items-center p-6 sm:p-8 pt-12 sm:pt-8 text-center group border-copa-border shadow-2xl">
       <div className="absolute inset-0 bg-gradient-to-t from-copa-bg via-transparent to-transparent opacity-90 z-0" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(220,38,38,0.1)_0%,_transparent_60%)] z-0" />
 
@@ -200,13 +200,13 @@ export const LivePlayer: React.FC<LivePlayerProps> = ({ match, homeTeam, awayTea
       </div>
 
       <div className="z-10 flex flex-col items-center max-w-lg">
-        <div className="flex justify-center items-center gap-6 sm:gap-12 mb-5">
+        <div className="flex flex-wrap sm:flex-nowrap justify-center items-center gap-3 sm:gap-12 mb-5 w-full">
           <div className="flex flex-col items-center">
             <span className="text-5xl filter drop-shadow-md">{homeTeam?.flag}</span>
             <span className="text-sm font-semibold mt-2 text-slate-300">{homeTeam?.name}</span>
           </div>
 
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center gap-2 order-first sm:order-none w-full sm:w-auto mb-3 sm:mb-0">
             <div className="flex items-center gap-3 bg-red-950/40 px-5 py-2 rounded-2xl border border-red-900/50">
               <span className="text-3xl font-bold font-mono text-white">{match.homeScore}</span>
               <span className="text-slate-500 font-bold">×</span>
